@@ -131,6 +131,13 @@ class AgentBridge:
     RECONNECT_BACKOFF_BASE = 2.0
     RECONNECT_MAX_DELAY = 60.0
     SSE_INACTIVITY_TIMEOUT = 120.0
+    SSE_INACTIVITY_TIMEOUT_MIN = 5.0
+    SSE_INACTIVITY_TIMEOUT_MAX = 3600.0
+    HTTP_CONNECT_TIMEOUT = 30.0
+    HTTP_DEFAULT_TIMEOUT = 30.0
+    OPENCODE_REQUEST_TIMEOUT = 10.0
+    PROMPT_MAX_DURATION = 5400.0
+    MAX_PENDING_PART_EVENTS = 2000
 
     def __init__(
         self,
@@ -146,8 +153,20 @@ class AgentBridge:
         self.auth_token = auth_token
         self.opencode_port = opencode_port
         self.opencode_base_url = f"http://localhost:{opencode_port}"
-        self.sse_inactivity_timeout = float(
-            os.environ.get("BRIDGE_SSE_INACTIVITY_TIMEOUT", str(self.SSE_INACTIVITY_TIMEOUT))
+
+        # Logger
+        self.log = get_logger(
+            "bridge",
+            service="sandbox",
+            sandbox_id=sandbox_id,
+            session_id=session_id,
+        )
+
+        self.sse_inactivity_timeout = self._resolve_timeout_seconds(
+            name="BRIDGE_SSE_INACTIVITY_TIMEOUT",
+            default=self.SSE_INACTIVITY_TIMEOUT,
+            min_value=self.SSE_INACTIVITY_TIMEOUT_MIN,
+            max_value=self.SSE_INACTIVITY_TIMEOUT_MAX,
         )
 
         self.ws: ClientConnection | None = None
@@ -161,14 +180,6 @@ class AgentBridge:
 
         # HTTP client for OpenCode API
         self.http_client: httpx.AsyncClient | None = None
-
-        # Logger
-        self.log = get_logger(
-            "bridge",
-            service="sandbox",
-            sandbox_id=sandbox_id,
-            session_id=session_id,
-        )
 
     @property
     def ws_url(self) -> str:
@@ -184,7 +195,12 @@ class AgentBridge:
         """
         self.log.info("bridge.run_start")
 
-        self.http_client = httpx.AsyncClient(timeout=httpx.Timeout(None, connect=30.0))
+        self.http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                self.HTTP_DEFAULT_TIMEOUT,
+                connect=self.HTTP_CONNECT_TIMEOUT,
+            )
+        )
         await self._load_session_id()
 
         reconnect_attempts = 0
@@ -491,6 +507,7 @@ class AgentBridge:
         resp = await self.http_client.post(
             f"{self.opencode_base_url}/session",
             json={},
+            timeout=self.OPENCODE_REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -662,28 +679,101 @@ class AgentBridge:
 
         cumulative_text: dict[str, str] = {}
         emitted_tool_states: set[str] = set()
-        our_assistant_msg_ids: set[str] = set()
+        allowed_assistant_msg_ids: set[str] = set()
+        pending_parts: dict[str, list[tuple[dict[str, Any], Any]]] = {}
+        pending_parts_total = 0
+        pending_drop_logged = False
 
-        inactivity_timeout = self.sse_inactivity_timeout
         start_time = time.time()
+        loop = asyncio.get_running_loop()
+
+        def buffer_part(oc_msg_id: str, part: dict[str, Any], delta: Any) -> None:
+            nonlocal pending_parts_total
+            nonlocal pending_drop_logged
+            if pending_parts_total >= self.MAX_PENDING_PART_EVENTS:
+                if not pending_drop_logged:
+                    self.log.warn(
+                        "bridge.pending_parts_dropped",
+                        message_id=message_id,
+                        limit=self.MAX_PENDING_PART_EVENTS,
+                    )
+                    pending_drop_logged = True
+                return
+            pending_parts.setdefault(oc_msg_id, []).append((part, delta))
+            pending_parts_total += 1
+
+        def handle_part(part: dict[str, Any], delta: Any) -> list[dict[str, Any]]:
+            part_type = part.get("type", "")
+            part_id = part.get("id", "")
+            events: list[dict[str, Any]] = []
+
+            if part_type == "text":
+                text = part.get("text", "")
+                if delta:
+                    cumulative_text[part_id] = cumulative_text.get(part_id, "") + delta
+                else:
+                    cumulative_text[part_id] = text
+
+                if cumulative_text.get(part_id):
+                    events.append(
+                        {
+                            "type": "token",
+                            "content": cumulative_text[part_id],
+                            "messageId": message_id,
+                        }
+                    )
+
+            elif part_type == "tool":
+                tool_event = self._transform_part_to_event(part, message_id)
+                if tool_event:
+                    state = part.get("state", {})
+                    status = state.get("status", "")
+                    call_id = part.get("callID", "")
+                    tool_key = f"tool:{call_id}:{status}"
+
+                    if tool_key not in emitted_tool_states:
+                        emitted_tool_states.add(tool_key)
+                        events.append(tool_event)
+
+            elif part_type == "step-start":
+                events.append(
+                    {
+                        "type": "step_start",
+                        "messageId": message_id,
+                    }
+                )
+
+            elif part_type == "step-finish":
+                events.append(
+                    {
+                        "type": "step_finish",
+                        "cost": part.get("cost"),
+                        "tokens": part.get("tokens"),
+                        "reason": part.get("reason"),
+                        "messageId": message_id,
+                    }
+                )
+
+            return events
 
         try:
-            deadline = asyncio.get_running_loop().time() + inactivity_timeout
+            deadline = asyncio.get_running_loop().time() + self.sse_inactivity_timeout
             async with asyncio.timeout_at(deadline) as timeout_ctx:
                 async with self.http_client.stream(
                     "GET",
                     sse_url,
-                    timeout=httpx.Timeout(None, connect=30.0),
+                    timeout=httpx.Timeout(None, connect=self.HTTP_CONNECT_TIMEOUT, read=None),
                 ) as sse_response:
                     if sse_response.status_code != 200:
                         raise SSEConnectionError(
                             f"SSE connection failed: {sse_response.status_code}"
                         )
 
+                    prompt_start = loop.time()
                     prompt_response = await self.http_client.post(
                         async_url,
                         json=request_body,
-                        timeout=30.0,
+                        timeout=self.OPENCODE_REQUEST_TIMEOUT,
                     )
                     if prompt_response.status_code not in [200, 204]:
                         error_body = prompt_response.text
@@ -701,164 +791,154 @@ class AgentBridge:
                         props = event.get("properties", {})
 
                         if event_type == "server.connected":
-                            continue
+                            pass
+                        elif event_type != "server.heartbeat":
+                            event_session_id = props.get("sessionID") or props.get("part", {}).get(
+                                "sessionID"
+                            )
+                            if not event_session_id or event_session_id == self.opencode_session_id:
+                                if event_type == "message.updated":
+                                    info = props.get("info", {})
+                                    msg_session_id = info.get("sessionID")
+                                    if msg_session_id == self.opencode_session_id:
+                                        oc_msg_id = info.get("id", "")
+                                        parent_id = info.get("parentID", "")
+                                        role = info.get("role", "")
+                                        finish = info.get("finish", "")
 
-                        if event_type == "server.heartbeat":
-                            continue
+                                        self.log.debug(
+                                            "bridge.message_updated",
+                                            role=role,
+                                            oc_msg_id=oc_msg_id,
+                                            parent_match=(parent_id == opencode_message_id),
+                                        )
 
-                        event_session_id = props.get("sessionID") or props.get("part", {}).get(
-                            "sessionID"
-                        )
-                        if event_session_id and event_session_id != self.opencode_session_id:
-                            continue
+                                        if (
+                                            role == "assistant"
+                                            and parent_id == opencode_message_id
+                                            and oc_msg_id
+                                        ):
+                                            allowed_assistant_msg_ids.add(oc_msg_id)
+                                            pending = pending_parts.pop(oc_msg_id, [])
+                                            if pending:
+                                                pending_parts_total -= len(pending)
+                                                for part, delta in pending:
+                                                    for part_event in handle_part(part, delta):
+                                                        yield part_event
 
-                        if event_type == "message.updated":
-                            info = props.get("info", {})
-                            msg_session_id = info.get("sessionID")
-                            if msg_session_id == self.opencode_session_id:
-                                oc_msg_id = info.get("id", "")
-                                parent_id = info.get("parentID", "")
-                                role = info.get("role", "")
-                                finish = info.get("finish", "")
+                                        if finish and finish not in ("tool-calls", ""):
+                                            self.log.debug(
+                                                "bridge.message_finished",
+                                                finish=finish,
+                                            )
 
-                                self.log.debug(
-                                    "bridge.message_updated",
-                                    role=role,
-                                    oc_msg_id=oc_msg_id,
-                                    parent_match=(parent_id == opencode_message_id),
-                                )
+                                elif event_type == "message.part.updated":
+                                    part = props.get("part", {})
+                                    delta = props.get("delta")
+                                    oc_msg_id = part.get("messageID", "")
+                                    if oc_msg_id in allowed_assistant_msg_ids:
+                                        for part_event in handle_part(part, delta):
+                                            yield part_event
+                                    elif oc_msg_id:
+                                        buffer_part(oc_msg_id, part, delta)
 
-                                if (
-                                    role == "assistant"
-                                    and parent_id == opencode_message_id
-                                    and oc_msg_id
-                                ):
-                                    our_assistant_msg_ids.add(oc_msg_id)
+                                elif event_type == "session.idle":
+                                    idle_session_id = props.get("sessionID")
+                                    if idle_session_id == self.opencode_session_id:
+                                        elapsed = time.time() - start_time
+                                        self.log.debug(
+                                            "bridge.session_idle",
+                                            elapsed_s=round(elapsed, 1),
+                                            tracked_msgs=len(allowed_assistant_msg_ids),
+                                        )
+                                        async for final_event in self._fetch_final_message_state(
+                                            message_id,
+                                            opencode_message_id,
+                                            cumulative_text,
+                                            allowed_assistant_msg_ids,
+                                        ):
+                                            yield final_event
+                                        return
 
-                                if finish and finish not in ("tool-calls", ""):
-                                    self.log.debug(
-                                        "bridge.message_finished",
-                                        finish=finish,
-                                    )
-                            continue
+                                elif event_type == "session.status":
+                                    status_session_id = props.get("sessionID")
+                                    status = props.get("status", {})
+                                    if (
+                                        status_session_id == self.opencode_session_id
+                                        and status.get("type") == "idle"
+                                    ):
+                                        elapsed = time.time() - start_time
+                                        self.log.debug(
+                                            "bridge.session_status_idle",
+                                            elapsed_s=round(elapsed, 1),
+                                            tracked_msgs=len(allowed_assistant_msg_ids),
+                                        )
+                                        async for final_event in self._fetch_final_message_state(
+                                            message_id,
+                                            opencode_message_id,
+                                            cumulative_text,
+                                            allowed_assistant_msg_ids,
+                                        ):
+                                            yield final_event
+                                        return
 
-                        if event_type == "message.part.updated":
-                            part = props.get("part", {})
-                            delta = props.get("delta")
-                            part_type = part.get("type", "")
-                            part_id = part.get("id", "")
-                            oc_msg_id = part.get("messageID", "")
+                                elif event_type == "session.error":
+                                    error_session_id = props.get("sessionID")
+                                    if error_session_id == self.opencode_session_id:
+                                        error = props.get("error", {})
+                                        error_msg = (
+                                            error.get("message")
+                                            if isinstance(error, dict)
+                                            else str(error)
+                                        )
+                                        self.log.error("bridge.session_error", error_msg=error_msg)
+                                        yield {
+                                            "type": "error",
+                                            "error": error_msg or "Unknown error",
+                                            "messageId": message_id,
+                                        }
+                                        return
 
-                            if our_assistant_msg_ids and oc_msg_id not in our_assistant_msg_ids:
-                                continue
-
-                            if part_type == "text":
-                                text = part.get("text", "")
-                                if delta:
-                                    cumulative_text[part_id] = (
-                                        cumulative_text.get(part_id, "") + delta
-                                    )
-                                else:
-                                    cumulative_text[part_id] = text
-
-                                if cumulative_text.get(part_id):
-                                    yield {
-                                        "type": "token",
-                                        "content": cumulative_text[part_id],
-                                        "messageId": message_id,
-                                    }
-
-                            elif part_type == "tool":
-                                tool_event = self._transform_part_to_event(part, message_id)
-                                if tool_event:
-                                    state = part.get("state", {})
-                                    status = state.get("status", "")
-                                    call_id = part.get("callID", "")
-                                    tool_key = f"tool:{call_id}:{status}"
-
-                                    if tool_key not in emitted_tool_states:
-                                        emitted_tool_states.add(tool_key)
-                                        yield tool_event
-
-                            elif part_type == "step-start":
-                                yield {
-                                    "type": "step_start",
-                                    "messageId": message_id,
-                                }
-
-                            elif part_type == "step-finish":
-                                yield {
-                                    "type": "step_finish",
-                                    "cost": part.get("cost"),
-                                    "tokens": part.get("tokens"),
-                                    "reason": part.get("reason"),
-                                    "messageId": message_id,
-                                }
-
-                        elif event_type == "session.idle":
-                            idle_session_id = props.get("sessionID")
-                            if idle_session_id == self.opencode_session_id:
-                                elapsed = time.time() - start_time
-                                self.log.debug(
-                                    "bridge.session_idle",
-                                    elapsed_s=round(elapsed, 1),
-                                    tracked_msgs=len(our_assistant_msg_ids),
-                                )
-                                async for final_event in self._fetch_final_message_state(
-                                    message_id,
-                                    opencode_message_id,
-                                    cumulative_text,
-                                    our_assistant_msg_ids,
-                                ):
-                                    yield final_event
-                                return
-
-                        elif event_type == "session.status":
-                            status_session_id = props.get("sessionID")
-                            status = props.get("status", {})
-                            if (
-                                status_session_id == self.opencode_session_id
-                                and status.get("type") == "idle"
+                        if loop.time() > prompt_start + self.PROMPT_MAX_DURATION:
+                            elapsed = time.time() - start_time
+                            self.log.error(
+                                "bridge.prompt_max_duration_timeout",
+                                timeout_ms=int(self.PROMPT_MAX_DURATION * 1000),
+                                elapsed_ms=int(elapsed * 1000),
+                                message_id=message_id,
+                            )
+                            await self._request_opencode_stop(reason="prompt_max_duration_timeout")
+                            async for final_event in self._fetch_final_message_state(
+                                message_id,
+                                opencode_message_id,
+                                cumulative_text,
+                                allowed_assistant_msg_ids,
                             ):
-                                elapsed = time.time() - start_time
-                                self.log.debug(
-                                    "bridge.session_status_idle",
-                                    elapsed_s=round(elapsed, 1),
-                                    tracked_msgs=len(our_assistant_msg_ids),
-                                )
-                                async for final_event in self._fetch_final_message_state(
-                                    message_id,
-                                    opencode_message_id,
-                                    cumulative_text,
-                                    our_assistant_msg_ids,
-                                ):
-                                    yield final_event
-                                return
-
-                        elif event_type == "session.error":
-                            error_session_id = props.get("sessionID")
-                            if error_session_id == self.opencode_session_id:
-                                error = props.get("error", {})
-                                error_msg = (
-                                    error.get("message") if isinstance(error, dict) else str(error)
-                                )
-                                self.log.error("bridge.session_error", error_msg=error_msg)
-                                yield {
-                                    "type": "error",
-                                    "error": error_msg or "Unknown error",
-                                    "messageId": message_id,
-                                }
-                                return
+                                yield final_event
+                            raise RuntimeError(
+                                f"Prompt exceeded max duration of {self.PROMPT_MAX_DURATION:.0f}s."
+                            )
 
         except TimeoutError:
             elapsed = time.time() - start_time
             self.log.error(
                 "bridge.sse_inactivity_timeout",
-                inactivity_timeout_s=inactivity_timeout,
-                elapsed_s=round(elapsed, 1),
+                timeout_name="sse_inactivity",
+                timeout_ms=int(self.sse_inactivity_timeout * 1000),
+                elapsed_ms=int(elapsed * 1000),
+                operation="bridge.sse",
+                message_id=message_id,
             )
+            await self._request_opencode_stop(reason="inactivity_timeout")
+            async for final_event in self._fetch_final_message_state(
+                message_id,
+                opencode_message_id,
+                cumulative_text,
+                allowed_assistant_msg_ids,
+            ):
+                yield final_event
             raise RuntimeError(
-                f"SSE stream inactive for {inactivity_timeout:.0f}s "
+                f"SSE stream inactive for {self.sse_inactivity_timeout:.0f}s "
                 f"(no data received). Total elapsed: {elapsed:.0f}s"
             )
 
@@ -894,7 +974,10 @@ class AgentBridge:
         messages_url = f"{self.opencode_base_url}/session/{self.opencode_session_id}/message"
 
         try:
-            response = await self.http_client.get(messages_url, timeout=10.0)
+            response = await self.http_client.get(
+                messages_url,
+                timeout=self.OPENCODE_REQUEST_TIMEOUT,
+            )
             if response.status_code != 200:
                 self.log.warn(
                     "bridge.final_state_fetch_error",
@@ -946,16 +1029,7 @@ class AgentBridge:
     async def _handle_stop(self) -> None:
         """Handle stop command - halt current execution."""
         self.log.info("bridge.stop")
-
-        if not self.http_client or not self.opencode_session_id:
-            return
-
-        try:
-            await self.http_client.post(
-                f"{self.opencode_base_url}/session/{self.opencode_session_id}/stop",
-            )
-        except Exception as e:
-            self.log.error("bridge.stop_error", exc=e)
+        await self._request_opencode_stop(reason="command")
 
     async def _handle_snapshot(self) -> None:
         """Handle snapshot command - prepare for snapshot."""
@@ -1116,7 +1190,8 @@ class AgentBridge:
                 if self.http_client:
                     try:
                         resp = await self.http_client.get(
-                            f"{self.opencode_base_url}/session/{self.opencode_session_id}"
+                            f"{self.opencode_base_url}/session/{self.opencode_session_id}",
+                            timeout=self.OPENCODE_REQUEST_TIMEOUT,
                         )
                         if resp.status_code != 200:
                             self.log.info(
@@ -1137,6 +1212,69 @@ class AgentBridge:
                 self.session_id_file.write_text(self.opencode_session_id)
             except Exception as e:
                 self.log.error("opencode.session.save_error", exc=e)
+
+    async def _request_opencode_stop(self, reason: str) -> bool:
+        if not self.http_client or not self.opencode_session_id:
+            return False
+
+        try:
+            await self.http_client.post(
+                f"{self.opencode_base_url}/session/{self.opencode_session_id}/stop",
+                timeout=self.OPENCODE_REQUEST_TIMEOUT,
+            )
+            self.log.info("bridge.stop_requested", reason=reason)
+            return True
+        except Exception as e:
+            self.log.warn("bridge.stop_request_error", exc=e, reason=reason)
+            return False
+
+    def _resolve_timeout_seconds(
+        self,
+        name: str,
+        default: float,
+        min_value: float,
+        max_value: float,
+    ) -> float:
+        raw = os.environ.get(name)
+        if raw is None or raw == "":
+            value = default
+        else:
+            try:
+                value = float(raw)
+            except ValueError:
+                self.log.warn(
+                    "bridge.timeout_invalid",
+                    timeout_name=name,
+                    timeout_ms=int(default * 1000),
+                    detail=f"invalid value '{raw}', using default",
+                )
+                value = default
+
+        if value < min_value:
+            self.log.warn(
+                "bridge.timeout_clamped",
+                timeout_name=name,
+                timeout_ms=int(min_value * 1000),
+                detail=f"below min ({min_value}s), clamped",
+            )
+            value = min_value
+        elif value > max_value:
+            self.log.warn(
+                "bridge.timeout_clamped",
+                timeout_name=name,
+                timeout_ms=int(max_value * 1000),
+                detail=f"above max ({max_value}s), clamped",
+            )
+            value = max_value
+
+        self.log.info(
+            "bridge.timeout_config",
+            timeout_name=name,
+            timeout_ms=int(value * 1000),
+            min_ms=int(min_value * 1000),
+            max_ms=int(max_value * 1000),
+        )
+        return value
 
 
 async def main():
