@@ -858,6 +858,10 @@ async function handleSessionPrompt(
     )
   );
 
+  // Background: update D1 timestamp so session bubbles to top of sidebar
+  const store = new SessionIndexStore(env.DB);
+  ctx.executionCtx?.waitUntil(store.touchUpdatedAt(sessionId).catch(() => {}));
+
   return response;
 }
 
