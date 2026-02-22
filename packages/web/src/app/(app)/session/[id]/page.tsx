@@ -16,6 +16,8 @@ import {
 import { useSessionSocket } from "@/hooks/use-session-socket";
 import { SafeMarkdown } from "@/components/safe-markdown";
 import { ToolCallGroup } from "@/components/tool-call-group";
+import { ComposerSlashMenu } from "@/components/composer-slash-menu";
+import { ComposerStarterWorkflows } from "@/components/composer-starter-workflows";
 import { useSidebarContext } from "@/components/sidebar-layout";
 import { SidebarToggleIcon } from "@/components/sidebar-toggle-icon";
 import {
@@ -25,6 +27,19 @@ import {
 import { ActionBar } from "@/components/action-bar";
 import { copyToClipboard, formatModelNameLower } from "@/lib/format";
 import { SHORTCUT_LABELS } from "@/lib/keyboard-shortcuts";
+import {
+  filterComposerCommands,
+  isLatestAutocompleteResult,
+  nextAutocompleteRequestVersion,
+  type ComposerAutocompleteState,
+} from "@/lib/composer-autocomplete";
+import {
+  COMPOSER_COMMANDS,
+  getStarterComposerCommands,
+  type ComposerCommand,
+} from "@/lib/composer-commands";
+import { appendTemplateToComposer, replaceActiveSlashToken } from "@/lib/composer-insert";
+import { getSlashTokenContext } from "@/lib/composer-slash-grammar";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   DEFAULT_MODEL,
@@ -144,6 +159,7 @@ function SessionPageContent() {
     artifacts,
     currentParticipantId,
     isProcessing,
+    lastPromptQueuedRequestId,
     loadingHistory,
     sendPrompt,
     stopExecution,
@@ -190,14 +206,116 @@ function SessionPageContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingAckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const pendingDraftClearRef = useRef<{ requestId: string; submittedText: string } | null>(null);
+  const autocompleteRequestVersionRef = useRef(0);
+  const [isAwaitingPromptAck, setIsAwaitingPromptAck] = useState(false);
+  const [slashMenuState, setSlashMenuState] = useState<ComposerAutocompleteState>("closed");
+  const [slashOptions, setSlashOptions] = useState<ComposerCommand[]>([]);
+  const [activeSlashIndex, setActiveSlashIndex] = useState(0);
 
   const { enabledModels, enabledModelOptions } = useEnabledModels();
+  const starterWorkflows = useMemo(() => getStarterComposerCommands(COMPOSER_COMMANDS), []);
 
   const handleModelChange = useCallback((model: string) => {
     setSelectedModel(model);
     setReasoningEffort(getDefaultReasoningEffort(model));
   }, []);
+
+  const closeSlashMenu = useCallback(() => {
+    autocompleteRequestVersionRef.current = nextAutocompleteRequestVersion(
+      autocompleteRequestVersionRef.current
+    );
+    setSlashMenuState("closed");
+    setSlashOptions([]);
+    setActiveSlashIndex(0);
+  }, []);
+
+  const updateSlashAutocomplete = useCallback(
+    (nextPrompt: string, caretIndex: number | null) => {
+      const context = getSlashTokenContext(nextPrompt, caretIndex ?? nextPrompt.length);
+
+      if (!context || isProcessing) {
+        closeSlashMenu();
+        return;
+      }
+
+      setSlashMenuState("loading");
+      const requestVersion = nextAutocompleteRequestVersion(autocompleteRequestVersionRef.current);
+      autocompleteRequestVersionRef.current = requestVersion;
+
+      Promise.resolve()
+        .then(() => filterComposerCommands(COMPOSER_COMMANDS, context.query))
+        .then((options) => {
+          if (!isLatestAutocompleteResult(requestVersion, autocompleteRequestVersionRef.current)) {
+            return;
+          }
+
+          setSlashOptions(options);
+          setActiveSlashIndex(0);
+          setSlashMenuState(options.length > 0 ? "open" : "empty");
+        })
+        .catch(() => {
+          if (!isLatestAutocompleteResult(requestVersion, autocompleteRequestVersionRef.current)) {
+            return;
+          }
+
+          setSlashOptions([]);
+          setSlashMenuState("error");
+        });
+    },
+    [closeSlashMenu, isProcessing]
+  );
+
+  const focusComposerAt = useCallback((caretIndex: number) => {
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(caretIndex, caretIndex);
+    });
+  }, []);
+
+  const insertSlashCommand = useCallback(
+    (command: ComposerCommand) => {
+      const input = inputRef.current;
+      const caretIndex = input?.selectionStart ?? prompt.length;
+      const context = getSlashTokenContext(prompt, caretIndex);
+
+      if (!context) {
+        closeSlashMenu();
+        return;
+      }
+
+      const next = replaceActiveSlashToken({
+        text: prompt,
+        context,
+        template: command.template,
+      });
+
+      setPrompt(next.text);
+      closeSlashMenu();
+      focusComposerAt(next.caretIndex);
+    },
+    [closeSlashMenu, focusComposerAt, prompt]
+  );
+
+  const insertStarterWorkflow = useCallback(
+    (command: ComposerCommand) => {
+      if (isProcessing || isAwaitingPromptAck) return;
+
+      const next = appendTemplateToComposer({
+        text: prompt,
+        template: command.template,
+      });
+
+      setPrompt(next.text);
+      closeSlashMenu();
+      focusComposerAt(next.caretIndex);
+    },
+    [closeSlashMenu, focusComposerAt, isAwaitingPromptAck, isProcessing, prompt]
+  );
 
   // Reset to default if the selected model is no longer enabled
   useEffect(() => {
@@ -218,6 +336,37 @@ function SessionPageContent() {
     }
   }, [sessionState?.model, sessionState?.reasoningEffort]);
 
+  useEffect(() => {
+    if (!lastPromptQueuedRequestId) return;
+
+    const pending = pendingDraftClearRef.current;
+    if (!pending || pending.requestId !== lastPromptQueuedRequestId) {
+      return;
+    }
+
+    pendingDraftClearRef.current = null;
+    if (pendingAckTimeoutRef.current) {
+      clearTimeout(pendingAckTimeoutRef.current);
+      pendingAckTimeoutRef.current = null;
+    }
+    setIsAwaitingPromptAck(false);
+    setPrompt((current) => (current === pending.submittedText ? "" : current));
+    mutate("/api/sessions");
+  }, [lastPromptQueuedRequestId]);
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    closeSlashMenu();
+  }, [closeSlashMenu, isProcessing]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAckTimeoutRef.current) {
+        clearTimeout(pendingAckTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Close model dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -231,16 +380,75 @@ function SessionPageContent() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim() || isProcessing) return;
+    if (!prompt.trim() || isProcessing || isAwaitingPromptAck) return;
 
-    sendPrompt(prompt, selectedModel, reasoningEffort);
-    setPrompt("");
-    // Revalidate sidebar so this session bubbles to the top
-    mutate("/api/sessions");
+    const requestId = crypto.randomUUID();
+    const sendOutcome = sendPrompt(prompt, selectedModel, reasoningEffort, requestId);
+
+    if (sendOutcome === "rejected") {
+      setIsAwaitingPromptAck(false);
+      return;
+    }
+
+    pendingDraftClearRef.current = {
+      requestId,
+      submittedText: prompt,
+    };
+
+    setIsAwaitingPromptAck(true);
+    if (pendingAckTimeoutRef.current) {
+      clearTimeout(pendingAckTimeoutRef.current);
+    }
+    pendingAckTimeoutRef.current = setTimeout(() => {
+      setIsAwaitingPromptAck(false);
+    }, 10000);
+
+    closeSlashMenu();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return;
+
+    const hasSelectableOption = slashMenuState === "open" && slashOptions.length > 0;
+    const selectedCommand = slashOptions[activeSlashIndex] || slashOptions[0];
+
+    if (slashMenuState !== "closed") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeSlashMenu();
+        return;
+      }
+
+      if (hasSelectableOption && e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveSlashIndex((current) => (current + 1) % slashOptions.length);
+        return;
+      }
+
+      if (hasSelectableOption && e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveSlashIndex((current) =>
+          current === 0 ? slashOptions.length - 1 : Math.max(0, current - 1)
+        );
+        return;
+      }
+
+      if (hasSelectableOption && e.key === "Tab") {
+        e.preventDefault();
+        if (selectedCommand) {
+          insertSlashCommand(selectedCommand);
+        }
+        return;
+      }
+
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (hasSelectableOption && selectedCommand) {
+          insertSlashCommand(selectedCommand);
+        }
+        return;
+      }
+    }
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -249,7 +457,9 @@ function SessionPageContent() {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setPrompt(e.target.value);
+    const nextPrompt = e.target.value;
+    setPrompt(nextPrompt);
+    updateSlashAutocomplete(nextPrompt, e.target.selectionStart);
 
     // Send typing indicator (debounced)
     if (typingTimeoutRef.current) {
@@ -259,6 +469,19 @@ function SessionPageContent() {
       sendTyping();
     }, 300);
   };
+
+  const slashListId = "composer-slash-listbox";
+  const activeSlashOption = slashOptions[activeSlashIndex] || null;
+  const slashResultsAnnouncement = useMemo(() => {
+    if (slashMenuState === "loading") return "Loading workflow suggestions";
+    if (slashMenuState === "error") return "Unable to load workflow suggestions";
+    if (slashMenuState === "empty") return "No matching workflows";
+    if (slashMenuState === "open") {
+      const activeText = activeSlashOption ? ` Active ${activeSlashOption.title}.` : "";
+      return `${slashOptions.length} workflow suggestions available.${activeText}`;
+    }
+    return "";
+  }, [activeSlashOption, slashMenuState, slashOptions.length]);
 
   return (
     <SessionContent
@@ -276,6 +499,7 @@ function SessionPageContent() {
       messagesEndRef={messagesEndRef}
       prompt={prompt}
       isProcessing={isProcessing}
+      isAwaitingPromptAck={isAwaitingPromptAck}
       selectedModel={selectedModel}
       reasoningEffort={reasoningEffort}
       modelDropdownOpen={modelDropdownOpen}
@@ -284,6 +508,10 @@ function SessionPageContent() {
       handleSubmit={handleSubmit}
       handleInputChange={handleInputChange}
       handleKeyDown={handleKeyDown}
+      handleStarterWorkflowSelect={insertStarterWorkflow}
+      handleSlashOptionHover={setActiveSlashIndex}
+      handleSlashOptionSelect={insertSlashCommand}
+      closeSlashMenu={closeSlashMenu}
       setModelDropdownOpen={setModelDropdownOpen}
       setSelectedModel={handleModelChange}
       setReasoningEffort={setReasoningEffort}
@@ -294,6 +522,12 @@ function SessionPageContent() {
       loadOlderEvents={loadOlderEvents}
       modelOptions={enabledModelOptions}
       fallbackSessionInfo={fallbackSessionInfo}
+      slashMenuState={slashMenuState}
+      slashOptions={slashOptions}
+      slashActiveIndex={activeSlashIndex}
+      slashListId={slashListId}
+      slashResultsAnnouncement={slashResultsAnnouncement}
+      starterWorkflows={starterWorkflows}
     />
   );
 }
@@ -313,6 +547,7 @@ function SessionContent({
   messagesEndRef,
   prompt,
   isProcessing,
+  isAwaitingPromptAck,
   selectedModel,
   reasoningEffort,
   modelDropdownOpen,
@@ -321,6 +556,10 @@ function SessionContent({
   handleSubmit,
   handleInputChange,
   handleKeyDown,
+  handleStarterWorkflowSelect,
+  handleSlashOptionHover,
+  handleSlashOptionSelect,
+  closeSlashMenu,
   setModelDropdownOpen,
   setSelectedModel,
   setReasoningEffort,
@@ -331,6 +570,12 @@ function SessionContent({
   loadOlderEvents,
   modelOptions,
   fallbackSessionInfo,
+  slashMenuState,
+  slashOptions,
+  slashActiveIndex,
+  slashListId,
+  slashResultsAnnouncement,
+  starterWorkflows,
 }: {
   sessionState: ReturnType<typeof useSessionSocket>["sessionState"];
   connected: boolean;
@@ -346,6 +591,7 @@ function SessionContent({
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   prompt: string;
   isProcessing: boolean;
+  isAwaitingPromptAck: boolean;
   selectedModel: string;
   reasoningEffort: string | undefined;
   modelDropdownOpen: boolean;
@@ -354,6 +600,10 @@ function SessionContent({
   handleSubmit: (e: React.FormEvent) => void;
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
+  handleStarterWorkflowSelect: (command: ComposerCommand) => void;
+  handleSlashOptionHover: (index: number) => void;
+  handleSlashOptionSelect: (command: ComposerCommand) => void;
+  closeSlashMenu: () => void;
   setModelDropdownOpen: (open: boolean) => void;
   setSelectedModel: (model: string) => void;
   setReasoningEffort: (value: string | undefined) => void;
@@ -363,6 +613,12 @@ function SessionContent({
   loadingHistory: boolean;
   loadOlderEvents: () => void;
   modelOptions: ModelCategory[];
+  slashMenuState: ComposerAutocompleteState;
+  slashOptions: ComposerCommand[];
+  slashActiveIndex: number;
+  slashListId: string;
+  slashResultsAnnouncement: string;
+  starterWorkflows: ComposerCommand[];
   fallbackSessionInfo: {
     repoOwner: string | null;
     repoName: string | null;
@@ -772,6 +1028,12 @@ function SessionContent({
             />
           </div>
 
+          <ComposerStarterWorkflows
+            workflows={starterWorkflows}
+            disabled={isProcessing || isAwaitingPromptAck}
+            onSelect={handleStarterWorkflowSelect}
+          />
+
           {/* Input container */}
           <div className="border border-border bg-input">
             {/* Text input area with floating send button */}
@@ -781,14 +1043,35 @@ function SessionContent({
                 value={prompt}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
+                onBlur={closeSlashMenu}
                 placeholder={isProcessing ? "Type your next message..." : "Ask or build anything"}
                 className="w-full resize-none bg-transparent px-4 pt-4 pb-12 focus:outline-none text-foreground placeholder:text-secondary-foreground"
                 rows={3}
+                aria-controls={slashMenuState !== "closed" ? slashListId : undefined}
+                aria-expanded={slashMenuState !== "closed"}
+                aria-activedescendant={
+                  slashMenuState === "open" && slashOptions[slashActiveIndex]
+                    ? `${slashListId}-option-${slashActiveIndex}`
+                    : undefined
+                }
               />
+              <ComposerSlashMenu
+                listId={slashListId}
+                state={slashMenuState}
+                options={slashOptions}
+                activeIndex={slashActiveIndex}
+                onHover={handleSlashOptionHover}
+                onSelect={handleSlashOptionSelect}
+              />
+              <div className="sr-only" aria-live="polite" aria-atomic="true">
+                {slashResultsAnnouncement}
+              </div>
               {/* Floating action buttons */}
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
-                {isProcessing && prompt.trim() && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">Waiting...</span>
+                {(isProcessing || isAwaitingPromptAck) && prompt.trim() && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    {isProcessing ? "Waiting..." : "Queueing..."}
+                  </span>
                 )}
                 {isProcessing && (
                   <button
@@ -804,17 +1087,21 @@ function SessionContent({
                 )}
                 <button
                   type="submit"
-                  disabled={!prompt.trim() || isProcessing}
+                  disabled={!prompt.trim() || isProcessing || isAwaitingPromptAck}
                   className="p-2 text-secondary-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition"
                   title={
-                    isProcessing && prompt.trim()
-                      ? "Wait for execution to complete"
-                      : `Send (${SHORTCUT_LABELS.SEND_PROMPT})`
+                    isAwaitingPromptAck
+                      ? "Waiting for queue acknowledgement"
+                      : isProcessing && prompt.trim()
+                        ? "Wait for execution to complete"
+                        : `Send (${SHORTCUT_LABELS.SEND_PROMPT})`
                   }
                   aria-label={
-                    isProcessing && prompt.trim()
-                      ? "Wait for execution to complete"
-                      : `Send (${SHORTCUT_LABELS.SEND_PROMPT})`
+                    isAwaitingPromptAck
+                      ? "Waiting for queue acknowledgement"
+                      : isProcessing && prompt.trim()
+                        ? "Wait for execution to complete"
+                        : `Send (${SHORTCUT_LABELS.SEND_PROMPT})`
                   }
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

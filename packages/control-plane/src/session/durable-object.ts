@@ -955,6 +955,7 @@ export class SessionDO extends DurableObject<Env> {
       content: string;
       model?: string;
       reasoningEffort?: string;
+      requestId?: string;
       attachments?: Array<{ type: string; name: string; url?: string; content?: string }>;
     }
   ): Promise<void> {
