@@ -27,6 +27,7 @@ interface PromptMessageData {
   content: string;
   model?: string;
   reasoningEffort?: string;
+  requestId?: string;
   attachments?: Array<{ type: string; name: string; url?: string; content?: string }>;
 }
 
@@ -143,6 +144,7 @@ export class SessionMessageQueue {
       type: "prompt_queued",
       messageId,
       position,
+      requestId: data.requestId,
     } as ServerMessage);
 
     await this.processMessageQueue();
