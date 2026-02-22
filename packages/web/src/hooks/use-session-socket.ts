@@ -63,6 +63,8 @@ interface Participant {
   lastSeen: number;
 }
 
+type SendPromptOutcome = "accepted" | "rejected" | "local_enqueued";
+
 interface UseSessionSocketReturn {
   connected: boolean;
   connecting: boolean;
@@ -78,7 +80,13 @@ interface UseSessionSocketReturn {
   isProcessing: boolean;
   hasMoreHistory: boolean;
   loadingHistory: boolean;
-  sendPrompt: (content: string, model?: string, reasoningEffort?: string) => void;
+  lastPromptQueuedRequestId: string | null;
+  sendPrompt: (
+    content: string,
+    model?: string,
+    reasoningEffort?: string,
+    requestId?: string
+  ) => SendPromptOutcome;
   stopExecution: () => void;
   sendTyping: () => void;
   reconnect: () => void;
@@ -147,6 +155,7 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [currentParticipantId, setCurrentParticipantId] = useState<string | null>(null);
+  const [lastPromptQueuedRequestId, setLastPromptQueuedRequestId] = useState<string | null>(null);
   const currentParticipantRef = useRef<{
     participantId: string;
     name: string;
@@ -203,6 +212,7 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
       artifact?: Artifact;
       userId?: string;
       messageId?: string;
+      requestId?: string;
       position?: number;
       status?: string;
       error?: string;
@@ -251,7 +261,7 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
         }
 
         case "prompt_queued":
-          // Could show queue position indicator
+          setLastPromptQueuedRequestId(data.requestId || null);
           break;
 
         case "sandbox_event":
@@ -520,38 +530,49 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
     };
   }, [sessionId, handleMessage, fetchWsToken]);
 
-  const sendPrompt = useCallback((content: string, model?: string, reasoningEffort?: string) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.error("WebSocket not connected");
-      return;
-    }
+  const sendPrompt = useCallback(
+    (
+      content: string,
+      model?: string,
+      reasoningEffort?: string,
+      requestId?: string
+    ): SendPromptOutcome => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.error("WebSocket not connected");
+        return "rejected";
+      }
 
-    if (!subscribedRef.current) {
-      console.error("Not subscribed yet, waiting...");
-      // Retry after a short delay
-      setTimeout(() => sendPrompt(content, model, reasoningEffort), 500);
-      return;
-    }
+      if (!subscribedRef.current) {
+        console.error("Not subscribed yet, waiting...");
+        // Retry after a short delay
+        setTimeout(() => sendPrompt(content, model, reasoningEffort, requestId), 500);
+        return "local_enqueued";
+      }
 
-    console.log("Sending prompt:", content, "with model:", model, "reasoning:", reasoningEffort);
+      console.log("Sending prompt:", content, "with model:", model, "reasoning:", reasoningEffort);
 
-    // Optimistically set isProcessing for immediate feedback
-    // Server will confirm with processing_status message
-    setSessionState((prev) => (prev ? { ...prev, isProcessing: true } : null));
+      // Optimistically set isProcessing for immediate feedback
+      // Server will confirm with processing_status message
+      setSessionState((prev) => (prev ? { ...prev, isProcessing: true } : null));
 
-    // Note: user_message event is NOT inserted optimistically here.
-    // The server writes a user_message event to the events table and broadcasts it
-    // to all clients (including the sender), which handles both display and multiplayer.
+      // Note: user_message event is NOT inserted optimistically here.
+      // The server writes a user_message event to the events table and broadcasts it
+      // to all clients (including the sender), which handles both display and multiplayer.
 
-    wsRef.current.send(
-      JSON.stringify({
-        type: "prompt",
-        content,
-        model, // Include model for per-message model switching
-        reasoningEffort,
-      })
-    );
-  }, []);
+      wsRef.current.send(
+        JSON.stringify({
+          type: "prompt",
+          content,
+          model, // Include model for per-message model switching
+          reasoningEffort,
+          requestId,
+        })
+      );
+
+      return "accepted";
+    },
+    []
+  );
 
   const stopExecution = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -653,6 +674,7 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
     isProcessing,
     hasMoreHistory,
     loadingHistory,
+    lastPromptQueuedRequestId,
     sendPrompt,
     stopExecution,
     sendTyping,
