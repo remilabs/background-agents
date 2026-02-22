@@ -17,7 +17,6 @@ import { useSessionSocket } from "@/hooks/use-session-socket";
 import { SafeMarkdown } from "@/components/safe-markdown";
 import { ToolCallGroup } from "@/components/tool-call-group";
 import { ComposerSlashMenu } from "@/components/composer-slash-menu";
-import { ComposerStarterWorkflows } from "@/components/composer-starter-workflows";
 import { useSidebarContext } from "@/components/sidebar-layout";
 import { SidebarToggleIcon } from "@/components/sidebar-toggle-icon";
 import {
@@ -33,12 +32,8 @@ import {
   nextAutocompleteRequestVersion,
   type ComposerAutocompleteState,
 } from "@/lib/composer-autocomplete";
-import {
-  COMPOSER_COMMANDS,
-  getStarterComposerCommands,
-  type ComposerCommand,
-} from "@/lib/composer-commands";
-import { appendTemplateToComposer, replaceActiveSlashToken } from "@/lib/composer-insert";
+import { COMPOSER_COMMANDS, type ComposerCommand } from "@/lib/composer-commands";
+import { replaceActiveSlashToken } from "@/lib/composer-insert";
 import { getSlashTokenContext } from "@/lib/composer-slash-grammar";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
@@ -216,7 +211,6 @@ function SessionPageContent() {
   const [activeSlashIndex, setActiveSlashIndex] = useState(0);
 
   const { enabledModels, enabledModelOptions } = useEnabledModels();
-  const starterWorkflows = useMemo(() => getStarterComposerCommands(COMPOSER_COMMANDS), []);
 
   const handleModelChange = useCallback((model: string) => {
     setSelectedModel(model);
@@ -299,22 +293,6 @@ function SessionPageContent() {
       focusComposerAt(next.caretIndex);
     },
     [closeSlashMenu, focusComposerAt, prompt]
-  );
-
-  const insertStarterWorkflow = useCallback(
-    (command: ComposerCommand) => {
-      if (isProcessing || isAwaitingPromptAck) return;
-
-      const next = appendTemplateToComposer({
-        text: prompt,
-        template: command.template,
-      });
-
-      setPrompt(next.text);
-      closeSlashMenu();
-      focusComposerAt(next.caretIndex);
-    },
-    [closeSlashMenu, focusComposerAt, isAwaitingPromptAck, isProcessing, prompt]
   );
 
   // Reset to default if the selected model is no longer enabled
@@ -508,7 +486,6 @@ function SessionPageContent() {
       handleSubmit={handleSubmit}
       handleInputChange={handleInputChange}
       handleKeyDown={handleKeyDown}
-      handleStarterWorkflowSelect={insertStarterWorkflow}
       handleSlashOptionHover={setActiveSlashIndex}
       handleSlashOptionSelect={insertSlashCommand}
       closeSlashMenu={closeSlashMenu}
@@ -527,7 +504,6 @@ function SessionPageContent() {
       slashActiveIndex={activeSlashIndex}
       slashListId={slashListId}
       slashResultsAnnouncement={slashResultsAnnouncement}
-      starterWorkflows={starterWorkflows}
     />
   );
 }
@@ -556,7 +532,6 @@ function SessionContent({
   handleSubmit,
   handleInputChange,
   handleKeyDown,
-  handleStarterWorkflowSelect,
   handleSlashOptionHover,
   handleSlashOptionSelect,
   closeSlashMenu,
@@ -575,7 +550,6 @@ function SessionContent({
   slashActiveIndex,
   slashListId,
   slashResultsAnnouncement,
-  starterWorkflows,
 }: {
   sessionState: ReturnType<typeof useSessionSocket>["sessionState"];
   connected: boolean;
@@ -600,7 +574,6 @@ function SessionContent({
   handleSubmit: (e: React.FormEvent) => void;
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
-  handleStarterWorkflowSelect: (command: ComposerCommand) => void;
   handleSlashOptionHover: (index: number) => void;
   handleSlashOptionSelect: (command: ComposerCommand) => void;
   closeSlashMenu: () => void;
@@ -618,7 +591,6 @@ function SessionContent({
   slashActiveIndex: number;
   slashListId: string;
   slashResultsAnnouncement: string;
-  starterWorkflows: ComposerCommand[];
   fallbackSessionInfo: {
     repoOwner: string | null;
     repoName: string | null;
@@ -1027,12 +999,6 @@ function SessionContent({
               onUnarchive={handleUnarchive}
             />
           </div>
-
-          <ComposerStarterWorkflows
-            workflows={starterWorkflows}
-            disabled={isProcessing || isAwaitingPromptAck}
-            onSelect={handleStarterWorkflowSelect}
-          />
 
           {/* Input container */}
           <div className="border border-border bg-input">
