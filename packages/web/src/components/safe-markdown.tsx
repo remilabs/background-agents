@@ -1,9 +1,11 @@
 "use client";
 
+import { memo } from "react";
+import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import type { ComponentPropsWithoutRef } from "react";
 
 // Strict sanitization schema to prevent XSS
 // Based on GitHub's sanitization but even more restrictive
@@ -55,101 +57,110 @@ const sanitizeSchema = {
   strip: ["script", "style", "iframe", "object", "embed", "form", "input", "button"],
 };
 
+// Plugin arrays extracted to module scope to preserve referential identity across renders
+const remarkPluginList = [remarkGfm];
+const rehypePluginList = [
+  [rehypeSanitize, sanitizeSchema] as [typeof rehypeSanitize, typeof sanitizeSchema],
+];
+
+// Component overrides extracted to module scope to avoid re-creation on every render
+const markdownComponents: Components = {
+  // Custom link renderer - opens in new tab with security attributes
+  a: ({ href, children, ...props }: ComponentPropsWithoutRef<"a">) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      className="text-accent hover:underline"
+      {...props}
+    >
+      {children}
+    </a>
+  ),
+  // Code blocks with styling
+  pre: ({ children, ...props }: ComponentPropsWithoutRef<"pre">) => (
+    <pre className="bg-card text-foreground p-3 overflow-x-auto text-sm" {...props}>
+      {children}
+    </pre>
+  ),
+  // Inline code
+  code: ({ className, children, ...props }: ComponentPropsWithoutRef<"code">) => {
+    // Check if this is a code block (has language class) or inline code
+    const isCodeBlock = className?.includes("language-");
+    if (isCodeBlock) {
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+    return (
+      <code className="bg-card text-foreground px-1.5 py-0.5 text-sm" {...props}>
+        {children}
+      </code>
+    );
+  },
+  // Paragraphs
+  p: ({ children, ...props }: ComponentPropsWithoutRef<"p">) => (
+    <p className="mb-2 last:mb-0" {...props}>
+      {children}
+    </p>
+  ),
+  // Lists
+  ul: ({ children, ...props }: ComponentPropsWithoutRef<"ul">) => (
+    <ul className="list-disc pl-4 mb-2" {...props}>
+      {children}
+    </ul>
+  ),
+  ol: ({ children, ...props }: ComponentPropsWithoutRef<"ol">) => (
+    <ol className="list-decimal pl-4 mb-2" {...props}>
+      {children}
+    </ol>
+  ),
+  // Blockquotes
+  blockquote: ({ children, ...props }: ComponentPropsWithoutRef<"blockquote">) => (
+    <blockquote className="border-l-4 border-border pl-4 italic text-muted-foreground" {...props}>
+      {children}
+    </blockquote>
+  ),
+  // Tables
+  table: ({ children, ...props }: ComponentPropsWithoutRef<"table">) => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse text-sm" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  th: ({ children, ...props }: ComponentPropsWithoutRef<"th">) => (
+    <th className="border border-border px-3 py-1 bg-card font-medium" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: ComponentPropsWithoutRef<"td">) => (
+    <td className="border border-border px-3 py-1" {...props}>
+      {children}
+    </td>
+  ),
+};
+
 interface SafeMarkdownProps {
   content: string;
   className?: string;
 }
 
-export function SafeMarkdown({ content, className = "" }: SafeMarkdownProps) {
+export const SafeMarkdown = memo(function SafeMarkdown({
+  content,
+  className = "",
+}: SafeMarkdownProps) {
   return (
     <div className={`prose prose-sm dark:prose-invert max-w-none break-words ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
-        components={{
-          // Custom link renderer - opens in new tab with security attributes
-          a: ({ href, children, ...props }: ComponentPropsWithoutRef<"a">) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer nofollow"
-              className="text-accent hover:underline"
-              {...props}
-            >
-              {children}
-            </a>
-          ),
-          // Code blocks with styling
-          pre: ({ children, ...props }: ComponentPropsWithoutRef<"pre">) => (
-            <pre className="bg-card text-foreground p-3 overflow-x-auto text-sm" {...props}>
-              {children}
-            </pre>
-          ),
-          // Inline code
-          code: ({ className, children, ...props }: ComponentPropsWithoutRef<"code">) => {
-            // Check if this is a code block (has language class) or inline code
-            const isCodeBlock = className?.includes("language-");
-            if (isCodeBlock) {
-              return (
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              );
-            }
-            return (
-              <code className="bg-card text-foreground px-1.5 py-0.5 text-sm" {...props}>
-                {children}
-              </code>
-            );
-          },
-          // Paragraphs
-          p: ({ children, ...props }: ComponentPropsWithoutRef<"p">) => (
-            <p className="mb-2 last:mb-0" {...props}>
-              {children}
-            </p>
-          ),
-          // Lists
-          ul: ({ children, ...props }: ComponentPropsWithoutRef<"ul">) => (
-            <ul className="list-disc pl-4 mb-2" {...props}>
-              {children}
-            </ul>
-          ),
-          ol: ({ children, ...props }: ComponentPropsWithoutRef<"ol">) => (
-            <ol className="list-decimal pl-4 mb-2" {...props}>
-              {children}
-            </ol>
-          ),
-          // Blockquotes
-          blockquote: ({ children, ...props }: ComponentPropsWithoutRef<"blockquote">) => (
-            <blockquote
-              className="border-l-4 border-border pl-4 italic text-muted-foreground"
-              {...props}
-            >
-              {children}
-            </blockquote>
-          ),
-          // Tables
-          table: ({ children, ...props }: ComponentPropsWithoutRef<"table">) => (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-sm" {...props}>
-                {children}
-              </table>
-            </div>
-          ),
-          th: ({ children, ...props }: ComponentPropsWithoutRef<"th">) => (
-            <th className="border border-border px-3 py-1 bg-card font-medium" {...props}>
-              {children}
-            </th>
-          ),
-          td: ({ children, ...props }: ComponentPropsWithoutRef<"td">) => (
-            <td className="border border-border px-3 py-1" {...props}>
-              {children}
-            </td>
-          ),
-        }}
+        remarkPlugins={remarkPluginList}
+        rehypePlugins={rehypePluginList}
+        components={markdownComponents}
       >
         {content}
       </ReactMarkdown>
     </div>
   );
-}
+});

@@ -432,6 +432,10 @@ function HomeContent({
                   </div>
                 </div>
 
+                <p className="px-4 pb-2 text-xs text-muted-foreground">
+                  Slash workflows are available in active session composers.
+                </p>
+
                 {/* Footer row with repo and model selectors */}
                 <div className="flex flex-col gap-2 px-4 py-2 border-t border-border-muted sm:flex-row sm:items-center sm:justify-between sm:gap-0">
                   {/* Left side - Repo selector + Model selector */}

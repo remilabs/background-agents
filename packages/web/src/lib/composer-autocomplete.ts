@@ -1,6 +1,22 @@
 import type { ComposerCommand } from "./composer-commands";
 
 export type ComposerAutocompleteState = "closed" | "loading" | "open" | "empty" | "error";
+export type ComposerKeyAction =
+  | "none"
+  | "close_menu"
+  | "move_next"
+  | "move_prev"
+  | "select_option"
+  | "block_send"
+  | "submit_prompt";
+
+interface ComposerKeyActionInput {
+  key: string;
+  shiftKey: boolean;
+  isComposing: boolean;
+  menuState: ComposerAutocompleteState;
+  optionCount: number;
+}
 
 const MAX_RESULTS = 8;
 
@@ -43,4 +59,36 @@ export function isLatestAutocompleteResult(
   latestRequestVersion: number
 ): boolean {
   return responseVersion === latestRequestVersion;
+}
+
+export function getComposerKeyAction({
+  key,
+  shiftKey,
+  isComposing,
+  menuState,
+  optionCount,
+}: ComposerKeyActionInput): ComposerKeyAction {
+  const hasSelectableOption = menuState === "open" && optionCount > 0;
+  const menuOpen = menuState !== "closed";
+
+  if (isComposing) {
+    if (key === "Escape" && menuOpen) {
+      return "close_menu";
+    }
+    return "none";
+  }
+
+  if (menuOpen) {
+    if (key === "Escape") return "close_menu";
+    if (hasSelectableOption && key === "ArrowDown") return "move_next";
+    if (hasSelectableOption && key === "ArrowUp") return "move_prev";
+    if (hasSelectableOption && key === "Tab") return "select_option";
+    if (key === "Enter" && !shiftKey) {
+      return hasSelectableOption ? "select_option" : "block_send";
+    }
+    return "none";
+  }
+
+  if (key === "Enter" && !shiftKey) return "submit_prompt";
+  return "none";
 }

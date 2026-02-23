@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
 import { checkAccessAllowed, parseAllowlist } from "./access-control";
+import { checkGitHubOrgAccess, checkGitHubTeamAccess } from "./github-team-access";
 
 // Extend NextAuth types to include GitHub-specific user info
 declare module "next-auth" {
@@ -33,28 +34,66 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: "read:user user:email repo",
+          scope: "read:user user:email read:org repo",
         },
       },
     }),
   ],
   callbacks: {
-    async signIn({ profile, user }) {
+    async signIn({ profile, user, account }) {
       const config = {
         allowedDomains: parseAllowlist(process.env.ALLOWED_EMAIL_DOMAINS),
         allowedUsers: parseAllowlist(process.env.ALLOWED_USERS),
       };
+      const allowedTeams = parseAllowlist(process.env.ALLOWED_GITHUB_TEAMS);
+      const allowedOrgs = parseAllowlist(process.env.ALLOWED_GITHUB_ORGS);
+
+      const hasUserOrDomainRestrictions =
+        config.allowedDomains.length > 0 || config.allowedUsers.length > 0;
+      const hasTeamRestrictions = allowedTeams.length > 0;
+      const hasOrgRestrictions = allowedOrgs.length > 0;
+
+      if (!hasUserOrDomainRestrictions && !hasTeamRestrictions && !hasOrgRestrictions) {
+        return true;
+      }
 
       const githubProfile = profile as { login?: string };
-      const isAllowed = checkAccessAllowed(config, {
-        githubUsername: githubProfile.login,
-        email: user.email ?? undefined,
-      });
+      if (hasUserOrDomainRestrictions) {
+        const isAllowed = checkAccessAllowed(config, {
+          githubUsername: githubProfile.login,
+          email: user.email ?? undefined,
+        });
 
-      if (!isAllowed) {
+        if (isAllowed) {
+          return true;
+        }
+      }
+
+      if (!hasTeamRestrictions && !hasOrgRestrictions) {
         return false;
       }
-      return true;
+
+      if (hasOrgRestrictions) {
+        const isOrgAllowed = await checkGitHubOrgAccess({
+          allowedOrgs,
+          githubAccessToken: account?.access_token,
+        });
+
+        if (isOrgAllowed) {
+          return true;
+        }
+      }
+
+      if (!hasTeamRestrictions) {
+        return false;
+      }
+
+      const isTeamAllowed = await checkGitHubTeamAccess({
+        allowedTeams,
+        githubAccessToken: account?.access_token,
+      });
+
+      return isTeamAllowed;
     },
     async jwt({ token, account, profile }) {
       if (account) {
