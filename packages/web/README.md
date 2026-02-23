@@ -83,6 +83,8 @@ NEXTAUTH_SECRET=your_random_secret  # Generate: openssl rand -base64 32
 
 # Access Control (optional - leave empty to allow all authenticated users)
 ALLOWED_USERS=username1,username2          # Comma-separated GitHub usernames
+ALLOWED_GITHUB_TEAMS=acme/platform,acme/security  # org/team-slug entries
+ALLOWED_GITHUB_ORGS=acme,partner-org       # GitHub org names
 ALLOWED_EMAIL_DOMAINS=example.com,corp.io  # Comma-separated email domains
 
 # Control Plane
@@ -90,9 +92,14 @@ CONTROL_PLANE_URL=http://localhost:8787
 NEXT_PUBLIC_WS_URL=ws://localhost:8787
 ```
 
-> **Access Control**: If both `ALLOWED_USERS` and `ALLOWED_EMAIL_DOMAINS` are empty, any
-> authenticated GitHub user can access the application. If either is set, users must match at least
-> one condition (username in allowed list OR email domain in allowed list).
+> **Access Control**: If `ALLOWED_USERS`, `ALLOWED_GITHUB_TEAMS`, `ALLOWED_GITHUB_ORGS`, and
+> `ALLOWED_EMAIL_DOMAINS` are all empty, any authenticated GitHub user can access the application.
+> If any are set, users must match at least one condition.
+>
+> **GitHub Teams**: Team checks call GitHub's `/user/teams` API and require `read:org` scope.
+>
+> **GitHub Orgs**: Org checks call GitHub's `/user/memberships/orgs/{org}` API and require
+> `read:org` scope.
 
 ### Development
 

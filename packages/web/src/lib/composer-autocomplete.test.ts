@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COMPOSER_COMMANDS } from "./composer-commands";
 import {
   filterComposerCommands,
+  getComposerKeyAction,
   isLatestAutocompleteResult,
   nextAutocompleteRequestVersion,
 } from "./composer-autocomplete";
@@ -59,5 +60,117 @@ describe("autocomplete helpers", () => {
     expect(latest).toBe(4);
     expect(isLatestAutocompleteResult(4, latest)).toBe(true);
     expect(isLatestAutocompleteResult(3, latest)).toBe(false);
+  });
+});
+
+describe("getComposerKeyAction", () => {
+  it("keeps Enter behavior when menu is closed", () => {
+    expect(
+      getComposerKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "closed",
+        optionCount: 0,
+      })
+    ).toBe("submit_prompt");
+
+    expect(
+      getComposerKeyAction({
+        key: "Enter",
+        shiftKey: true,
+        isComposing: false,
+        menuState: "closed",
+        optionCount: 0,
+      })
+    ).toBe("none");
+  });
+
+  it("selects slash option on Enter and Tab when selectable", () => {
+    expect(
+      getComposerKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "open",
+        optionCount: 3,
+      })
+    ).toBe("select_option");
+
+    expect(
+      getComposerKeyAction({
+        key: "Tab",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "open",
+        optionCount: 3,
+      })
+    ).toBe("select_option");
+  });
+
+  it("blocks send when menu is open without selectable options", () => {
+    expect(
+      getComposerKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "loading",
+        optionCount: 0,
+      })
+    ).toBe("block_send");
+
+    expect(
+      getComposerKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "empty",
+        optionCount: 0,
+      })
+    ).toBe("block_send");
+  });
+
+  it("moves active option with arrow keys", () => {
+    expect(
+      getComposerKeyAction({
+        key: "ArrowDown",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "open",
+        optionCount: 2,
+      })
+    ).toBe("move_next");
+
+    expect(
+      getComposerKeyAction({
+        key: "ArrowUp",
+        shiftKey: false,
+        isComposing: false,
+        menuState: "open",
+        optionCount: 2,
+      })
+    ).toBe("move_prev");
+  });
+
+  it("suppresses select and send during IME composition", () => {
+    expect(
+      getComposerKeyAction({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: true,
+        menuState: "open",
+        optionCount: 2,
+      })
+    ).toBe("none");
+
+    expect(
+      getComposerKeyAction({
+        key: "Escape",
+        shiftKey: false,
+        isComposing: true,
+        menuState: "open",
+        optionCount: 2,
+      })
+    ).toBe("close_menu");
   });
 });
