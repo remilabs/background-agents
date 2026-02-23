@@ -82,9 +82,14 @@ export class CallbackNotificationService {
         return this.env.LINEAR_BOT;
       case "slack":
         return this.env.SLACK_BOT;
+      // Known non-callback sources — no warning needed
+      case "web":
+      case "extension":
+      case "github":
+        return undefined;
       default:
-        // Default to SLACK_BOT for backward compatibility (web sources, etc.)
-        return this.env.SLACK_BOT;
+        this.log.warn("callback.unknown_source", { source });
+        return undefined;
     }
   }
 
@@ -119,7 +124,16 @@ export class CallbackNotificationService {
 
     const sessionId = this.getSessionId();
 
-    const context = JSON.parse(message.callback_context);
+    let context: unknown;
+    try {
+      context = JSON.parse(message.callback_context);
+    } catch (e) {
+      this.log.warn("callback.invalid_context", {
+        error: e instanceof Error ? e.message : String(e),
+        raw: message.callback_context,
+      });
+      return;
+    }
     const timestamp = Date.now();
 
     // Build payload without signature
@@ -233,7 +247,16 @@ export class CallbackNotificationService {
     }
 
     const sessionId = this.getSessionId();
-    const context = JSON.parse(message.callback_context);
+    let context: unknown;
+    try {
+      context = JSON.parse(message.callback_context);
+    } catch (e) {
+      this.log.warn("callback.invalid_context", {
+        error: e instanceof Error ? e.message : String(e),
+        raw: message.callback_context,
+      });
+      return;
+    }
 
     const payloadData = {
       sessionId,

@@ -21,8 +21,9 @@ type SessionRow = {
 const QUERY_PATTERNS = {
   INSERT_SESSION: /^INSERT OR IGNORE INTO sessions/,
   SELECT_BY_ID: /^SELECT \* FROM sessions WHERE id = \?$/,
-  SELECT_COUNT: /^SELECT COUNT\(\*\) as count FROM sessions\b/,
-  SELECT_LIST: /^SELECT \* FROM sessions\b.*ORDER BY updated_at DESC LIMIT/,
+  SELECT_LIST:
+    /^SELECT \*, COUNT\(\*\) OVER\(\) as total_count FROM sessions\b.*ORDER BY updated_at DESC LIMIT/,
+  SELECT_COUNT: /^SELECT COUNT\(\*\) as count FROM sessions/,
   UPDATE_STATUS: /^UPDATE sessions SET status = \?/,
   UPDATE_UPDATED_AT: /^UPDATE sessions SET updated_at = \?/,
   DELETE_SESSION: /^DELETE FROM sessions WHERE id = \?$/,
@@ -90,9 +91,11 @@ class FakeD1Database {
       whereArgs.push(...allArgs);
 
       const filtered = this.applyWhereConditions(normalized, whereArgs);
+      const totalCount = filtered.length;
       const sorted = filtered.sort((a, b) => b.updated_at - a.updated_at);
       const paged = sorted.slice(offset, offset + limit);
-      return paged;
+      // Simulate COUNT(*) OVER() window function by attaching total_count to each row
+      return paged.map((row) => ({ ...row, total_count: totalCount }));
     }
 
     if (QUERY_PATTERNS.SELECT_BY_PARENT.test(normalized)) {
@@ -267,7 +270,7 @@ function makeSession(overrides: Partial<SessionEntry> = {}): SessionEntry {
     title: "Test Session",
     repoOwner: "owner",
     repoName: "repo",
-    model: "anthropic/claude-haiku-4-5",
+    model: "anthropic/claude-sonnet-4-6",
     reasoningEffort: null,
     baseBranch: null,
     status: "created",

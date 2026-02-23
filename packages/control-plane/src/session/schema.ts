@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS session (
   base_sha TEXT,                                    -- SHA of base branch at session start
   current_sha TEXT,                                 -- Current HEAD SHA
   opencode_session_id TEXT,                         -- OpenCode session ID (for 1:1 mapping)
-  model TEXT DEFAULT 'anthropic/claude-haiku-4-5',   -- LLM model to use
+  model TEXT DEFAULT 'anthropic/claude-sonnet-4-6',   -- LLM model to use
   reasoning_effort TEXT,                            -- Session-level reasoning effort default
   status TEXT DEFAULT 'created',                    -- 'created', 'active', 'completed', 'failed', 'archived', 'cancelled'
   parent_session_id TEXT,                           -- Parent session ID (NULL for top-level)
@@ -119,6 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author_id);
 CREATE INDEX IF NOT EXISTS idx_events_message ON events(message_id);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_non_heartbeat ON events(created_at DESC, id DESC) WHERE type != 'heartbeat';
 CREATE INDEX IF NOT EXISTS idx_participants_user ON participants(user_id);
 `;
 
@@ -163,6 +164,11 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
   {
     id: 3,
     description: "Add model to session",
+    // NOTE: Migration 3 intentionally uses 'anthropic/claude-haiku-4-5' as the default,
+    // which differs from the current schema default ('anthropic/claude-sonnet-4-6').
+    // This preserves backward compatibility: sessions created before the model default
+    // was updated retain their original default. Do not "fix" this by changing the
+    // migration default — it would retroactively alter existing session behavior.
     run: `ALTER TABLE session ADD COLUMN model TEXT DEFAULT 'anthropic/claude-haiku-4-5'`,
   },
   {
@@ -338,6 +344,17 @@ export const MIGRATIONS: readonly SchemaMigration[] = [
       ALTER TABLE session ADD COLUMN spawn_source TEXT NOT NULL DEFAULT 'user';
       ALTER TABLE session ADD COLUMN spawn_depth INTEGER NOT NULL DEFAULT 0;
     `,
+  },
+  {
+    id: 26,
+    description: "Add partial index for non-heartbeat events queries",
+    run: (sql) => {
+      sql.exec(`
+        CREATE INDEX IF NOT EXISTS idx_events_non_heartbeat
+        ON events(created_at DESC, id DESC)
+        WHERE type != 'heartbeat'
+      `);
+    },
   },
 ];
 

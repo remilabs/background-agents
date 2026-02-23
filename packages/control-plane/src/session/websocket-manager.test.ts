@@ -692,6 +692,123 @@ describe("SessionWebSocketManagerImpl", () => {
       manager.forEachClientSocket("authenticated_only", (ws) => authOnlyCalled.push(ws));
       expect(authOnlyCalled).toHaveLength(0);
     });
+
+    it("uses fast path on second broadcast after initial scan backfills the set", () => {
+      const { manager, sockets, mockRepo } = createManager();
+
+      const authedWs = createFakeWebSocket();
+      sockets.set(authedWs, ["wsid:ws-1"]);
+      mockRepo.addMapping("ws-1", {
+        participant_id: "p-1",
+        client_id: "c-1",
+        user_id: "u-1",
+        github_name: null,
+        github_login: null,
+      });
+
+      // First broadcast: slow path (scan + classify + DB lookup)
+      const firstCalled: WebSocket[] = [];
+      manager.forEachClientSocket("authenticated_only", (ws) => firstCalled.push(ws));
+      expect(firstCalled).toEqual([authedWs]);
+
+      // Add a new unauthenticated socket after scan — it should NOT appear
+      // in the fast path since it was never registered via setClient
+      const newUnauthWs = createFakeWebSocket();
+      sockets.set(newUnauthWs, ["wsid:ws-new"]);
+
+      // Second broadcast: fast path (iterates authenticatedSockets set)
+      const secondCalled: WebSocket[] = [];
+      manager.forEachClientSocket("authenticated_only", (ws) => secondCalled.push(ws));
+      expect(secondCalled).toEqual([authedWs]);
+    });
+
+    it("fast path skips closed sockets in the authenticated set", () => {
+      const { manager, sockets } = createManager();
+
+      const openWs = createFakeWebSocket();
+      const closedWs = createFakeWebSocket(WebSocket.CLOSED);
+
+      sockets.set(openWs, ["wsid:ws-1"]);
+      sockets.set(closedWs, ["wsid:ws-2"]);
+
+      manager.setClient(openWs, createClientInfo({ ws: openWs }));
+      manager.setClient(closedWs, createClientInfo({ ws: closedWs }));
+
+      // Trigger initial scan so authSetComplete becomes true
+      manager.forEachClientSocket("authenticated_only", () => {});
+
+      // Now use fast path — should skip the closed socket
+      const called: WebSocket[] = [];
+      manager.forEachClientSocket("authenticated_only", (ws) => called.push(ws));
+      expect(called).toEqual([openWs]);
+    });
+  });
+
+  describe("broadcast", () => {
+    it("serializes message once and sends raw string to each client", () => {
+      const { manager, sockets } = createManager();
+
+      const ws1 = createFakeWebSocket();
+      const ws2 = createFakeWebSocket();
+      sockets.set(ws1, ["wsid:ws-1"]);
+      sockets.set(ws2, ["wsid:ws-2"]);
+      manager.setClient(ws1, createClientInfo({ ws: ws1 }));
+      manager.setClient(ws2, createClientInfo({ ws: ws2 }));
+
+      // Trigger initial scan to complete authSet
+      manager.forEachClientSocket("authenticated_only", () => {});
+
+      const message = { type: "sandbox_status", status: "ready" };
+      const originalStringify = JSON.stringify;
+      let stringifyCallCount = 0;
+      JSON.stringify = (...args: Parameters<typeof JSON.stringify>) => {
+        stringifyCallCount++;
+        return originalStringify(...args);
+      };
+
+      try {
+        manager.broadcast("authenticated_only", message);
+
+        // JSON.stringify called once (for the message), not once per client
+        expect(stringifyCallCount).toBe(1);
+        const expectedData = originalStringify(message);
+        expect(ws1.send).toHaveBeenCalledWith(expectedData);
+        expect(ws2.send).toHaveBeenCalledWith(expectedData);
+      } finally {
+        JSON.stringify = originalStringify;
+      }
+    });
+
+    it("skips serialization when message is already a string", () => {
+      const { manager, sockets } = createManager();
+
+      const ws = createFakeWebSocket();
+      sockets.set(ws, ["wsid:ws-1"]);
+      manager.setClient(ws, createClientInfo({ ws }));
+
+      // Trigger initial scan to complete authSet
+      manager.forEachClientSocket("authenticated_only", () => {});
+
+      const rawMessage = '{"type":"test"}';
+      manager.broadcast("authenticated_only", rawMessage);
+
+      expect(ws.send).toHaveBeenCalledWith(rawMessage);
+    });
+
+    it("sends to authenticated clients only in authenticated_only mode", () => {
+      const { manager, sockets } = createManager();
+
+      const authedWs = createFakeWebSocket();
+      const unauthWs = createFakeWebSocket();
+      sockets.set(authedWs, ["wsid:ws-1"]);
+      sockets.set(unauthWs, ["wsid:ws-2"]);
+      manager.setClient(authedWs, createClientInfo({ ws: authedWs }));
+
+      manager.broadcast("authenticated_only", { type: "test" });
+
+      expect(authedWs.send).toHaveBeenCalled();
+      expect(unauthWs.send).not.toHaveBeenCalled();
+    });
   });
 
   describe("enforceAuthTimeout", () => {

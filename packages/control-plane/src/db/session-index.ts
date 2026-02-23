@@ -129,21 +129,18 @@ export class SessionIndexStore {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    // Get total count
-    const countResult = await this.db
-      .prepare(`SELECT COUNT(*) as count FROM sessions ${where}`)
-      .bind(...params)
-      .first<{ count: number }>();
-
-    const total = countResult?.count ?? 0;
-
-    // Get paginated results
+    // Single query: window function provides total count alongside paginated rows
     const result = await this.db
-      .prepare(`SELECT * FROM sessions ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+      .prepare(
+        `SELECT *, COUNT(*) OVER() as total_count FROM sessions ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+      )
       .bind(...params, limit, offset)
-      .all<SessionRow>();
+      .all<SessionRow & { total_count: number }>();
 
-    const sessions = (result.results || []).map(toEntry);
+    const rows = result.results || [];
+    // When no rows match, the window function returns nothing — total is 0
+    const total = rows.length > 0 ? rows[0].total_count : 0;
+    const sessions = rows.map(toEntry);
 
     return {
       sessions,

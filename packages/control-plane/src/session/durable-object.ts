@@ -8,6 +8,8 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
+import { timingSafeEqual } from "@open-inspect/shared";
+import { z } from "zod";
 import { initSchema } from "./schema";
 import { generateId, hashToken, timingSafeEqual } from "../auth/crypto";
 import { getGitHubAppConfig } from "../auth/github-app";
@@ -46,14 +48,12 @@ import {
 import type {
   Env,
   ClientInfo,
-  ClientMessage,
   ServerMessage,
   SandboxEvent,
   SessionState,
   SessionStatus,
   SandboxStatus,
   ParticipantRole,
-  SpawnSource,
 } from "../types";
 import type { SpawnContext } from "@open-inspect/shared";
 import type { SessionRow, ArtifactRow, SandboxRow } from "./types";
@@ -102,6 +102,229 @@ const VALID_MESSAGE_STATUSES = ["pending", "processing", "completed", "failed"] 
  * unauthenticated connections that never complete the handshake.
  */
 const WS_AUTH_TIMEOUT_MS = 30000; // 30 seconds
+
+// ── Zod schemas for internal request body validation ──
+
+const ClientMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ping") }),
+  z.object({
+    type: z.literal("subscribe"),
+    token: z.string(),
+    clientId: z.string(),
+  }),
+  z.object({
+    type: z.literal("prompt"),
+    content: z.string(),
+    model: z.string().optional(),
+    reasoningEffort: z.string().optional(),
+    requestId: z.string().optional(),
+    attachments: z
+      .array(
+        z.object({
+          type: z.enum(["file", "image", "url"]),
+          name: z.string(),
+          url: z.string().optional(),
+          content: z.string().optional(),
+          mimeType: z.string().optional(),
+        })
+      )
+      .optional(),
+  }),
+  z.object({ type: z.literal("stop") }),
+  z.object({ type: z.literal("typing") }),
+  z.object({
+    type: z.literal("presence"),
+    status: z.enum(["active", "idle"]),
+    cursor: z.object({ line: z.number(), file: z.string() }).optional(),
+  }),
+  z.object({
+    type: z.literal("fetch_history"),
+    cursor: z.object({ timestamp: z.number(), id: z.string() }),
+    limit: z.number().optional(),
+  }),
+]);
+
+const VerifySandboxTokenSchema = z.object({
+  token: z.string().min(1, "token is required"),
+});
+
+const InitSessionSchema = z.object({
+  sessionName: z.string(),
+  repoOwner: z.string(),
+  repoName: z.string(),
+  repoId: z.number().optional(),
+  defaultBranch: z.string().optional(),
+  branch: z.string().optional(),
+  title: z.string().optional(),
+  model: z.string().optional(),
+  reasoningEffort: z.string().optional(),
+  userId: z.string(),
+  scmLogin: z.string().optional(),
+  scmName: z.string().optional(),
+  scmEmail: z.string().optional(),
+  scmToken: z.string().nullable().optional(),
+  scmTokenEncrypted: z.string().nullable().optional(),
+  parentSessionId: z.string().nullable().optional(),
+  spawnSource: z.enum(["user", "agent"]).optional(),
+  spawnDepth: z.number().optional(),
+});
+
+const EnqueuePromptSchema = z.object({
+  content: z.string().min(1, "content is required"),
+  authorId: z.string(),
+  source: z.string(),
+  model: z.string().optional(),
+  reasoningEffort: z.string().optional(),
+  attachments: z
+    .array(
+      z.object({
+        type: z.string(),
+        name: z.string(),
+        url: z.string().optional(),
+      })
+    )
+    .optional(),
+  callbackContext: z.record(z.unknown()).optional(),
+});
+
+const DOAddParticipantSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  scmLogin: z.string().optional(),
+  scmName: z.string().optional(),
+  scmEmail: z.string().optional(),
+  role: z.string().optional(),
+});
+
+const GenerateWsTokenSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  scmUserId: z.string().optional(),
+  scmLogin: z.string().optional(),
+  scmName: z.string().optional(),
+  scmEmail: z.string().optional(),
+  scmTokenEncrypted: z.string().nullable().optional(),
+  scmRefreshTokenEncrypted: z.string().nullable().optional(),
+  scmTokenExpiresAt: z.number().nullable().optional(),
+});
+
+const ArchiveUnarchiveSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+});
+
+const SandboxEventSchema: z.ZodType<SandboxEvent> = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("heartbeat"),
+    sandboxId: z.string(),
+    status: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("token"),
+    content: z.string(),
+    messageId: z.string(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("tool_call"),
+    tool: z.string(),
+    args: z.record(z.unknown()),
+    callId: z.string(),
+    status: z.string().optional(),
+    output: z.string().optional(),
+    messageId: z.string(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("step_start"),
+    messageId: z.string(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+    isSubtask: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("step_finish"),
+    cost: z.number().optional(),
+    tokens: z.number().optional(),
+    reason: z.string().optional(),
+    messageId: z.string(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+    isSubtask: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("tool_result"),
+    callId: z.string(),
+    result: z.string(),
+    error: z.string().optional(),
+    messageId: z.string(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("git_sync"),
+    status: z.enum(["pending", "in_progress", "completed", "failed"]),
+    sha: z.string().optional(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("error"),
+    error: z.string(),
+    messageId: z.string(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("execution_complete"),
+    messageId: z.string(),
+    success: z.boolean(),
+    error: z.string().optional(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("artifact"),
+    artifactType: z.string(),
+    url: z.string(),
+    metadata: z.record(z.unknown()).optional(),
+    sandboxId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("push_complete"),
+    branchName: z.string(),
+    sandboxId: z.string().optional(),
+    timestamp: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal("push_error"),
+    branchName: z.string(),
+    error: z.string(),
+    sandboxId: z.string().optional(),
+    timestamp: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal("user_message"),
+    content: z.string(),
+    messageId: z.string(),
+    timestamp: z.number(),
+    author: z
+      .object({
+        participantId: z.string(),
+        name: z.string(),
+        avatar: z.string().optional(),
+      })
+      .optional(),
+  }),
+]);
+
+const CreatePRRequestSchema = z.object({
+  title: z.string().min(1, "title is required"),
+  body: z.string().min(1, "body is required"),
+  baseBranch: z.string().optional(),
+  headBranch: z.string().optional(),
+});
 
 /**
  * Maximum age of a WebSocket authentication token (in milliseconds).
@@ -822,8 +1045,16 @@ export class SessionDO extends DurableObject<Env> {
    */
   private async handleSandboxMessage(ws: WebSocket, message: string): Promise<void> {
     try {
-      const event = JSON.parse(message) as SandboxEvent;
-      await this.processSandboxEvent(event);
+      const parsed = JSON.parse(message);
+      const result = SandboxEventSchema.safeParse(parsed);
+      if (!result.success) {
+        this.log.warn("Invalid sandbox message", {
+          errors: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+          type: parsed?.type,
+        });
+        return;
+      }
+      await this.processSandboxEvent(result.data);
     } catch (e) {
       this.log.error("Error processing sandbox message", {
         error: e instanceof Error ? e : String(e),
@@ -836,7 +1067,20 @@ export class SessionDO extends DurableObject<Env> {
    */
   private async handleClientMessage(ws: WebSocket, message: string): Promise<void> {
     try {
-      const data = JSON.parse(message) as ClientMessage;
+      const parsed = JSON.parse(message);
+      const result = ClientMessageSchema.safeParse(parsed);
+      if (!result.success) {
+        this.log.warn("Invalid client message", {
+          errors: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+        });
+        this.safeSend(ws, {
+          type: "error",
+          code: "INVALID_MESSAGE",
+          message: "Invalid message format",
+        });
+        return;
+      }
+      const data = result.data;
 
       switch (data.type) {
         case "ping":
@@ -968,8 +1212,10 @@ export class SessionDO extends DurableObject<Env> {
     const state = this.getSessionState(sandbox);
     const replay = this.getReplayData();
 
-    this.safeSend(ws, {
-      type: "subscribed",
+    // Build the subscribed message as a raw JSON string to avoid
+    // parsing and re-serializing the replay events (up to 500 items).
+    const envelope = {
+      type: "subscribed" as const,
       sessionId: state.id,
       state,
       participantId: participant.id,
@@ -981,9 +1227,21 @@ export class SessionDO extends DurableObject<Env> {
           resolveScmProviderFromEnv(this.env.SCM_PROVIDER)
         ),
       },
-      replay,
       spawnError: sandbox?.last_spawn_error ?? null,
-    } as ServerMessage);
+    };
+
+    // Embed raw event JSON strings directly into the replay array
+    // without parsing them, then stitch into the outer envelope.
+    const replayJson =
+      `{"events":[${replay.rawEvents.join(",")}]` +
+      `,"hasMore":${replay.hasMore}` +
+      `,"cursor":${replay.cursor ? JSON.stringify(replay.cursor) : "null"}}`;
+
+    // Splice the replay field into the serialized envelope.
+    const envelopeJson = JSON.stringify(envelope);
+    const message = envelopeJson.slice(0, -1) + `,"replay":${replayJson}}`;
+
+    this.safeSend(ws, message);
 
     // Send current presence
     this.presenceService.sendPresence(ws);
@@ -994,10 +1252,10 @@ export class SessionDO extends DurableObject<Env> {
 
   /**
    * Collect historical events for replay.
-   * Returns parsed events and pagination metadata for inclusion in the subscribed message.
+   * Returns raw JSON strings and pagination metadata to avoid parse/re-serialize overhead.
    */
   private getReplayData(): {
-    events: SandboxEvent[];
+    rawEvents: string[];
     hasMore: boolean;
     cursor: { timestamp: number; id: string } | null;
   } {
@@ -1005,18 +1263,16 @@ export class SessionDO extends DurableObject<Env> {
     const rows = this.repository.getEventsForReplay(REPLAY_LIMIT);
     const hasMore = rows.length >= REPLAY_LIMIT;
 
-    const events: SandboxEvent[] = [];
+    // Pass raw JSON strings through without parsing — they were serialized
+    // via JSON.stringify on insert and are guaranteed to be valid JSON.
+    const rawEvents: string[] = [];
     for (const row of rows) {
-      try {
-        events.push(JSON.parse(row.data));
-      } catch {
-        // Skip malformed events
-      }
+      rawEvents.push(row.data);
     }
 
     const cursor = rows.length > 0 ? { timestamp: rows[0].created_at, id: rows[0].id } : null;
 
-    return { events, hasMore, cursor };
+    return { rawEvents, hasMore, cursor };
   }
 
   /**
@@ -1115,24 +1371,20 @@ export class SessionDO extends DurableObject<Env> {
     const limit = Math.max(1, Math.min(rawLimit, 500));
     const page = this.repository.getEventsHistoryPage(data.cursor.timestamp, data.cursor.id, limit);
 
-    const items: SandboxEvent[] = [];
-    for (const event of page.events) {
-      try {
-        items.push(JSON.parse(event.data));
-      } catch {
-        // Skip malformed events
-      }
-    }
-
     // Compute new cursor from oldest item in the page
     const oldestEvent = page.events.length > 0 ? page.events[0] : null;
 
-    this.safeSend(ws, {
-      type: "history_page",
-      items,
-      hasMore: page.hasMore,
-      cursor: oldestEvent ? { timestamp: oldestEvent.created_at, id: oldestEvent.id } : null,
-    } as ServerMessage);
+    // Build response via raw string stitching to avoid parse/re-serialize
+    // overhead. Event data is already valid JSON from insertion.
+    const rawItems = page.events.map((e) => e.data);
+    const cursorJson = oldestEvent
+      ? `{"timestamp":${oldestEvent.created_at},"id":${JSON.stringify(oldestEvent.id)}}`
+      : "null";
+    const message =
+      `{"type":"history_page","items":[${rawItems.join(",")}]` +
+      `,"hasMore":${page.hasMore},"cursor":${cursorJson}}`;
+
+    this.safeSend(ws, message);
   }
 
   /**
@@ -1192,9 +1444,7 @@ export class SessionDO extends DurableObject<Env> {
    * Broadcast message to all authenticated clients.
    */
   private broadcast(message: ServerMessage): void {
-    this.wsManager.forEachClientSocket("authenticated_only", (ws) => {
-      this.wsManager.send(ws, message);
-    });
+    this.wsManager.broadcast("authenticated_only", message);
   }
 
   /**
@@ -1456,14 +1706,17 @@ export class SessionDO extends DurableObject<Env> {
    * Called by the router to validate sandbox-originated requests.
    */
   private async handleVerifySandboxToken(request: Request): Promise<Response> {
-    const body = (await request.json()) as { token: string };
-
-    if (!body.token) {
-      return new Response(JSON.stringify({ valid: false, error: "Missing token" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    const result = VerifySandboxTokenSchema.safeParse(await request.json());
+    if (!result.success) {
+      return new Response(
+        JSON.stringify({
+          valid: false,
+          error: result.error.issues.map((i) => i.message).join("; "),
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
+    const body = result.data;
 
     const sandbox = this.getSandbox();
     if (!sandbox) {
@@ -1554,26 +1807,14 @@ export class SessionDO extends DurableObject<Env> {
   // HTTP handlers
 
   private async handleInit(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
-      sessionName: string; // The name used for WebSocket routing
-      repoOwner: string;
-      repoName: string;
-      repoId?: number;
-      defaultBranch?: string; // Repo's default branch from GitHub
-      branch?: string; // User-selected branch to work on
-      title?: string;
-      model?: string; // LLM model to use
-      reasoningEffort?: string; // Reasoning effort level
-      userId: string;
-      scmLogin?: string;
-      scmName?: string;
-      scmEmail?: string;
-      scmToken?: string | null; // Plain SCM token (will be encrypted)
-      scmTokenEncrypted?: string | null; // Pre-encrypted SCM token
-      parentSessionId?: string | null;
-      spawnSource?: SpawnSource;
-      spawnDepth?: number;
-    };
+    const result = InitSessionSchema.safeParse(await request.json());
+    if (!result.success) {
+      return Response.json(
+        { error: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
+    }
+    const body = result.data;
 
     const sessionId = this.ctx.id.toString();
     const sessionName = body.sessionName; // Store the WebSocket routing name
@@ -1694,15 +1935,16 @@ export class SessionDO extends DurableObject<Env> {
 
   private async handleEnqueuePrompt(request: Request): Promise<Response> {
     try {
-      const body = (await request.json()) as {
-        content: string;
-        authorId: string;
-        source: string;
-        model?: string;
-        reasoningEffort?: string;
-        attachments?: Array<{ type: string; name: string; url?: string }>;
-        callbackContext?: Record<string, unknown>;
-      };
+      const result = EnqueuePromptSchema.safeParse(await request.json());
+      if (!result.success) {
+        return Response.json(
+          {
+            error: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+          },
+          { status: 400 }
+        );
+      }
+      const body = result.data;
 
       return Response.json(await this.messageQueue.enqueuePromptFromApi(body));
     } catch (error) {
@@ -1719,8 +1961,17 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   private async handleSandboxEvent(request: Request): Promise<Response> {
-    const event = (await request.json()) as SandboxEvent;
-    await this.processSandboxEvent(event);
+    const result = SandboxEventSchema.safeParse(await request.json());
+    if (!result.success) {
+      return Response.json(
+        {
+          error: "Invalid sandbox event",
+          details: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+        },
+        { status: 400 }
+      );
+    }
+    await this.processSandboxEvent(result.data);
     return Response.json({ status: "ok" });
   }
 
@@ -1740,13 +1991,14 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   private async handleAddParticipant(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
-      userId: string;
-      scmLogin?: string;
-      scmName?: string;
-      scmEmail?: string;
-      role?: string;
-    };
+    const result = DOAddParticipantSchema.safeParse(await request.json());
+    if (!result.success) {
+      return Response.json(
+        { error: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
+    }
+    const body = result.data;
 
     const id = generateId();
     const now = Date.now();
@@ -1846,12 +2098,16 @@ export class SessionDO extends DurableObject<Env> {
    * Resolves prompting participant and auth in DO, then delegates PR orchestration.
    */
   private async handleCreatePR(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
-      title: string;
-      body: string;
-      baseBranch?: string;
-      headBranch?: string;
-    };
+    const bodyResult = CreatePRRequestSchema.safeParse(await request.json());
+    if (!bodyResult.success) {
+      return Response.json(
+        {
+          error: bodyResult.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+        },
+        { status: 400 }
+      );
+    }
+    const body = bodyResult.data;
 
     const session = this.getSession();
     if (!session) {
@@ -1938,20 +2194,14 @@ export class SessionDO extends DurableObject<Env> {
    * 5. Returns the plain token to the caller
    */
   private async handleGenerateWsToken(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
-      userId: string;
-      scmUserId?: string;
-      scmLogin?: string;
-      scmName?: string;
-      scmEmail?: string;
-      scmTokenEncrypted?: string | null; // Encrypted SCM OAuth token for PR creation
-      scmRefreshTokenEncrypted?: string | null; // Encrypted SCM OAuth refresh token
-      scmTokenExpiresAt?: number | null; // Token expiry timestamp in milliseconds
-    };
-
-    if (!body.userId) {
-      return Response.json({ error: "userId is required" }, { status: 400 });
+    const result = GenerateWsTokenSchema.safeParse(await request.json());
+    if (!result.success) {
+      return Response.json(
+        { error: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
     }
+    const body = result.data;
 
     const now = Date.now();
 
@@ -2034,16 +2284,14 @@ export class SessionDO extends DurableObject<Env> {
     }
 
     // Verify user is a participant (fail closed)
-    let body: { userId?: string };
-    try {
-      body = (await request.json()) as { userId?: string };
-    } catch {
-      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    const result = ArchiveUnarchiveSchema.safeParse(await request.json().catch(() => null));
+    if (!result.success) {
+      return Response.json(
+        { error: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
     }
-
-    if (!body.userId) {
-      return Response.json({ error: "userId is required" }, { status: 400 });
-    }
+    const body = result.data;
 
     const participant = this.participantService.getByUserId(body.userId);
     if (!participant) {
@@ -2066,16 +2314,14 @@ export class SessionDO extends DurableObject<Env> {
     }
 
     // Verify user is a participant (fail closed)
-    let body: { userId?: string };
-    try {
-      body = (await request.json()) as { userId?: string };
-    } catch {
-      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    const result = ArchiveUnarchiveSchema.safeParse(await request.json().catch(() => null));
+    if (!result.success) {
+      return Response.json(
+        { error: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") },
+        { status: 400 }
+      );
     }
-
-    if (!body.userId) {
-      return Response.json({ error: "userId is required" }, { status: 400 });
-    }
+    const body = result.data;
 
     const participant = this.participantService.getByUserId(body.userId);
     if (!participant) {

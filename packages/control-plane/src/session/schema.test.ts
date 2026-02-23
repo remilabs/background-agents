@@ -50,6 +50,7 @@ describe("applyMigrations", () => {
     // No applied IDs → SELECT returns empty
     applyMigrations(mock.sql);
 
+    // Should have: CREATE TABLE + SELECT + N migration execs + N INSERT OR IGNORE
     const createTable = mock.calls.find((c) =>
       c.query.includes("CREATE TABLE IF NOT EXISTS _schema_migrations")
     );
@@ -64,13 +65,13 @@ describe("applyMigrations", () => {
     );
     expect(inserts).toHaveLength(MIGRATIONS.length);
 
-    // Verify all IDs are recorded
+    // Verify all migration IDs are recorded
     const recordedIds = inserts.map((c) => c.params[0]);
     expect(recordedIds).toEqual(MIGRATIONS.map((m) => m.id));
   });
 
   it("skips all migrations when fully migrated", () => {
-    // All 24 IDs already applied
+    // All migration IDs already applied
     const appliedRows = MIGRATIONS.map((m) => ({ id: m.id }));
     mock.setData("SELECT id FROM _schema_migrations", appliedRows);
 
