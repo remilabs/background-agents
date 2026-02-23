@@ -1,5 +1,10 @@
 /**
  * Type definitions for Open-Inspect Control Plane.
+ *
+ * Canonical types (SandboxStatus, MessageSource, SandboxEvent, ClientMessage,
+ * ServerMessage, SessionState, ParticipantPresence, etc.) are defined in
+ * @open-inspect/shared and re-exported here. Control-plane-specific types
+ * (Env, ClientInfo, GitHub OAuth) are defined locally.
  */
 
 import type {

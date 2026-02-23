@@ -488,6 +488,7 @@ export interface CreateSessionResponse {
 export interface ListSessionsResponse {
   sessions: Session[];
   cursor?: string;
+  total: number;
   hasMore: boolean;
 }
 
