@@ -4,7 +4,7 @@
  * Cloudflare Workers entry point with Durable Objects for session management.
  */
 
-import { handleRequest } from "./router";
+import { handleRequest, getAllowedOrigin } from "./router";
 import { createLogger } from "./logger";
 import type { Env } from "./types";
 
@@ -60,12 +60,16 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
   // If it's a WebSocket upgrade response, return it directly
   // Add CORS headers for the upgrade response
   if (response.webSocket) {
+    const headers: Record<string, string> = {};
+    const allowedOrigin = getAllowedOrigin(request.headers.get("Origin"), env);
+    if (allowedOrigin) {
+      headers["Access-Control-Allow-Origin"] = allowedOrigin;
+      headers["Vary"] = "Origin";
+    }
     return new Response(null, {
       status: 101,
       webSocket: response.webSocket,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      },
+      headers,
     });
   }
 
