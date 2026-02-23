@@ -79,6 +79,68 @@ class SandboxSupervisor:
             session_id=session_id,
         )
 
+    # --- Git credential helpers ---
+
+    _ASKPASS_SCRIPT_PATH = "/tmp/git-askpass.sh"
+
+    def _setup_git_credentials(self) -> None:
+        """
+        Write a GIT_ASKPASS helper script so the token never appears in
+        remote URLs or process listings.  The script simply echoes the
+        token when git asks for a password.
+        """
+        if not self.github_app_token:
+            return
+
+        # Write the helper script with restricted permissions from the start
+        fd = os.open(
+            self._ASKPASS_SCRIPT_PATH,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o700,
+        )
+        try:
+            # Use double-quotes around the token in case it contains special chars
+            os.write(fd, f'#!/bin/sh\necho "{self.github_app_token}"\n'.encode())
+        finally:
+            os.close(fd)
+
+        self.log.debug("git.askpass_configured")
+
+    def _cleanup_git_credentials(self) -> None:
+        """Remove the GIT_ASKPASS helper script."""
+        try:
+            Path(self._ASKPASS_SCRIPT_PATH).unlink()
+            self.log.debug("git.askpass_cleaned")
+        except FileNotFoundError:
+            pass
+
+    def _git_env(self) -> dict[str, str]:
+        """
+        Return environment variables for git subprocesses.
+
+        When a GitHub App token is available, sets GIT_ASKPASS so git
+        retrieves the password from the helper script instead of from
+        the remote URL.
+        """
+        env: dict[str, str] = {}
+        if self.github_app_token:
+            env["GIT_ASKPASS"] = self._ASKPASS_SCRIPT_PATH
+            # Prevent git from trying interactive prompts
+            env["GIT_TERMINAL_PROMPT"] = "0"
+        return env
+
+    def _authenticated_remote_url(self) -> str:
+        """
+        Return the git remote URL.
+
+        Uses ``x-access-token`` as the username so that git invokes
+        GIT_ASKPASS for the password.  The actual token is never
+        embedded in the URL.
+        """
+        if self.github_app_token:
+            return f"https://x-access-token@github.com/{self.repo_owner}/{self.repo_name}.git"
+        return f"https://github.com/{self.repo_owner}/{self.repo_name}.git"
+
     async def perform_git_sync(self) -> bool:
         """
         Clone repository if needed, then synchronize with latest changes.
@@ -108,11 +170,7 @@ class SandboxSupervisor:
                 authenticated=bool(self.github_app_token),
             )
 
-            # Use authenticated URL if GitHub App token is available
-            if self.github_app_token:
-                clone_url = f"https://x-access-token:{self.github_app_token}@github.com/{self.repo_owner}/{self.repo_name}.git"
-            else:
-                clone_url = f"https://github.com/{self.repo_owner}/{self.repo_name}.git"
+            clone_url = self._authenticated_remote_url()
 
             result = await asyncio.create_subprocess_exec(
                 "git",
@@ -123,6 +181,7 @@ class SandboxSupervisor:
                 str(self.repo_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, **self._git_env()},
             )
             stdout, stderr = await result.communicate()
 
@@ -138,15 +197,14 @@ class SandboxSupervisor:
             self.log.info("git.clone_complete", repo_path=str(self.repo_path))
 
         try:
-            # Configure remote URL with auth token if available
+            # Configure remote URL with credential-free auth URL
             if self.github_app_token:
-                auth_url = f"https://x-access-token:{self.github_app_token}@github.com/{self.repo_owner}/{self.repo_name}.git"
                 await asyncio.create_subprocess_exec(
                     "git",
                     "remote",
                     "set-url",
                     "origin",
-                    auth_url,
+                    self._authenticated_remote_url(),
                     cwd=self.repo_path,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -160,6 +218,7 @@ class SandboxSupervisor:
                 cwd=self.repo_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, **self._git_env()},
             )
             await result.wait()
 
@@ -664,15 +723,14 @@ class SandboxSupervisor:
             return
 
         try:
-            # Configure remote URL with auth token if available
+            # Configure remote URL with credential-free auth URL
             if self.github_app_token:
-                auth_url = f"https://x-access-token:{self.github_app_token}@github.com/{self.repo_owner}/{self.repo_name}.git"
                 await asyncio.create_subprocess_exec(
                     "git",
                     "remote",
                     "set-url",
                     "origin",
-                    auth_url,
+                    self._authenticated_remote_url(),
                     cwd=self.repo_path,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -687,6 +745,7 @@ class SandboxSupervisor:
                 cwd=self.repo_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, **self._git_env()},
             )
             stdout, stderr = await result.communicate()
 
@@ -760,6 +819,9 @@ class SandboxSupervisor:
         git_sync_success = False
         opencode_ready = False
         try:
+            # Phase 0: Set up GIT_ASKPASS credential helper
+            self._setup_git_credentials()
+
             # Phase 1: Git sync
             if restored_from_snapshot:
                 # Restored from snapshot - just do a quick fetch to check for updates
@@ -833,6 +895,9 @@ class SandboxSupervisor:
                 await asyncio.wait_for(self.opencode_process.wait(), timeout=10.0)
             except TimeoutError:
                 self.opencode_process.kill()
+
+        # Clean up credential helper
+        self._cleanup_git_credentials()
 
         self.log.info("supervisor.shutdown_complete")
 

@@ -10,11 +10,13 @@ This module handles:
 Note: Uses lazy imports to avoid pydantic dependency at module load time.
 """
 
+import contextlib
 import hashlib
 import os
 import subprocess
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ..app import app, function_image, github_app_secrets, inspect_volume
 from ..images.base import base_image
@@ -55,11 +57,55 @@ def _generate_github_app_token() -> str:
         return ""
 
 
+_ASKPASS_SCRIPT_PATH = "/tmp/git-askpass.sh"
+
+
 def _get_clone_url(repo_owner: str, repo_name: str, token: str) -> str:
-    """Get clone URL with authentication if token provided."""
+    """
+    Get clone URL for a repository.
+
+    When *token* is provided the URL uses ``x-access-token`` as the
+    username but does **not** embed the password.  The actual token is
+    supplied via GIT_ASKPASS (see ``_setup_git_askpass``).
+    """
     if token:
-        return f"https://x-access-token:{token}@github.com/{repo_owner}/{repo_name}.git"
+        return f"https://x-access-token@github.com/{repo_owner}/{repo_name}.git"
     return f"https://github.com/{repo_owner}/{repo_name}.git"
+
+
+def _setup_git_askpass(token: str) -> dict[str, str]:
+    """
+    Write a GIT_ASKPASS helper script and return env vars for git.
+
+    The helper echoes the token when git asks for a password, keeping
+    it out of remote URLs and process listings.
+
+    Returns:
+        dict of environment variable overrides for subprocess calls.
+    """
+    if not token:
+        return {}
+
+    fd = os.open(
+        _ASKPASS_SCRIPT_PATH,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+        0o700,
+    )
+    try:
+        os.write(fd, f'#!/bin/sh\necho "{token}"\n'.encode())
+    finally:
+        os.close(fd)
+
+    return {
+        "GIT_ASKPASS": _ASKPASS_SCRIPT_PATH,
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
+
+def _cleanup_git_askpass() -> None:
+    """Remove the GIT_ASKPASS helper script."""
+    with contextlib.suppress(FileNotFoundError):
+        Path(_ASKPASS_SCRIPT_PATH).unlink()
 
 
 @app.function(
@@ -120,15 +166,18 @@ def build_repo_image(
     try:
         # Generate GitHub App token for private repos
         token = _generate_github_app_token()
+        git_extra_env = _setup_git_askpass(token)
         clone_url = _get_clone_url(repo_owner, repo_name, token)
 
         print(f"[builder] Cloning {repo_owner}/{repo_name}...")
 
-        # Clone repository
+        # Clone repository (GIT_ASKPASS provides the token)
+        git_env = {**os.environ, **git_extra_env}
         subprocess.run(
             ["git", "clone", "--depth=1", f"--branch={default_branch}", clone_url, repo_path],
             check=True,
             capture_output=True,
+            env=git_env,
         )
 
         # Get current SHA
@@ -207,6 +256,9 @@ def build_repo_image(
             "status": "failed",
             "error": str(e),
         }
+
+    finally:
+        _cleanup_git_askpass()
 
 
 def await_run_auto_setup(repo_path: str) -> None:

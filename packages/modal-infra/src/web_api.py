@@ -13,9 +13,11 @@ The control plane must include an Authorization header with a valid token.
 
 import os
 import time
+from typing import Any
 
 from fastapi import Header, HTTPException
 from modal import fastapi_endpoint
+from pydantic import BaseModel, Field
 
 from .app import (
     app,
@@ -30,6 +32,65 @@ from .log_config import configure_logging, get_logger
 
 configure_logging()
 log = get_logger("web_api")
+
+
+# ── Pydantic request models ──
+
+
+class CreateSandboxRequest(BaseModel):
+    """Request body for creating a sandbox."""
+
+    session_id: str | None = None
+    sandbox_id: str | None = None
+    repo_owner: str
+    repo_name: str
+    control_plane_url: str | None = None
+    sandbox_auth_token: str | None = None
+    snapshot_id: str | None = None
+    git_user_name: str | None = None
+    git_user_email: str | None = None
+    opencode_session_id: str | None = None
+    provider: str = "anthropic"
+    model: str = "claude-sonnet-4-6"
+    user_env_vars: dict[str, str] | None = None
+
+
+class WarmSandboxRequest(BaseModel):
+    """Request body for warming a sandbox."""
+
+    repo_owner: str
+    repo_name: str
+    control_plane_url: str | None = None
+
+
+class SnapshotSandboxRequest(BaseModel):
+    """Request body for snapshotting a sandbox."""
+
+    sandbox_id: str = Field(..., min_length=1)
+    session_id: str | None = None
+    reason: str = "manual"
+
+
+class SessionConfigModel(BaseModel):
+    """Session configuration for restore requests."""
+
+    session_id: str | None = None
+    repo_owner: str | None = None
+    repo_name: str | None = None
+    provider: str = "anthropic"
+    model: str = "claude-sonnet-4-6"
+
+
+class RestoreSandboxRequest(BaseModel):
+    """Request body for restoring a sandbox from a snapshot."""
+
+    snapshot_image_id: str = Field(..., min_length=1)
+    session_config: dict[str, Any] = Field(default_factory=dict)
+    sandbox_id: str | None = None
+    control_plane_url: str | None = None
+    sandbox_auth_token: str = ""
+    user_env_vars: dict[str, str] | None = None
+    timeout_seconds: int | None = None
 
 
 def require_auth(authorization: str | None) -> None:
@@ -80,7 +141,7 @@ def require_valid_control_plane_url(url: str | None) -> None:
 )
 @fastapi_endpoint(method="POST")
 async def api_create_sandbox(
-    request: dict,
+    request: CreateSandboxRequest,
     authorization: str | None = Header(None),
     x_trace_id: str | None = Header(None),
     x_request_id: str | None = Header(None),
@@ -113,8 +174,7 @@ async def api_create_sandbox(
 
     require_auth(authorization)
 
-    control_plane_url = request.get("control_plane_url")
-    require_valid_control_plane_url(control_plane_url)
+    require_valid_control_plane_url(request.control_plane_url)
 
     try:
         # Import types and manager directly
@@ -142,31 +202,29 @@ async def api_create_sandbox(
 
         # Build session config
         git_user = None
-        git_user_name = request.get("git_user_name")
-        git_user_email = request.get("git_user_email")
-        if git_user_name and git_user_email:
-            git_user = GitUser(name=git_user_name, email=git_user_email)
+        if request.git_user_name and request.git_user_email:
+            git_user = GitUser(name=request.git_user_name, email=request.git_user_email)
 
         session_config = SessionConfig(
-            session_id=request.get("session_id"),
-            repo_owner=request.get("repo_owner"),
-            repo_name=request.get("repo_name"),
-            opencode_session_id=request.get("opencode_session_id"),
-            provider=request.get("provider", "anthropic"),
-            model=request.get("model", "claude-sonnet-4-6"),
+            session_id=request.session_id,
+            repo_owner=request.repo_owner,
+            repo_name=request.repo_name,
+            opencode_session_id=request.opencode_session_id,
+            provider=request.provider,
+            model=request.model,
             git_user=git_user,
         )
 
         config = SandboxConfig(
-            repo_owner=request.get("repo_owner"),
-            repo_name=request.get("repo_name"),
-            sandbox_id=request.get("sandbox_id"),  # Use control-plane-provided ID for auth
-            snapshot_id=request.get("snapshot_id"),
+            repo_owner=request.repo_owner,
+            repo_name=request.repo_name,
+            sandbox_id=request.sandbox_id,
+            snapshot_id=request.snapshot_id,
             session_config=session_config,
-            control_plane_url=control_plane_url,
-            sandbox_auth_token=request.get("sandbox_auth_token"),
+            control_plane_url=request.control_plane_url,
+            sandbox_auth_token=request.sandbox_auth_token,
             github_app_token=github_app_token,
-            user_env_vars=request.get("user_env_vars") or None,
+            user_env_vars=request.user_env_vars,
         )
 
         handle = await manager.create_sandbox(config)
@@ -184,7 +242,7 @@ async def api_create_sandbox(
         outcome = "error"
         http_status = 500
         log.error("api.error", exc=e, endpoint_name="api_create_sandbox")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         duration_ms = int((time.time() - start_time) * 1000)
         log.info(
@@ -209,7 +267,7 @@ async def api_create_sandbox(
 )
 @fastapi_endpoint(method="POST")
 async def api_warm_sandbox(
-    request: dict,
+    request: WarmSandboxRequest,
     authorization: str | None = Header(None),
     x_trace_id: str | None = Header(None),
     x_request_id: str | None = Header(None),
@@ -234,17 +292,16 @@ async def api_warm_sandbox(
 
     require_auth(authorization)
 
-    control_plane_url = request.get("control_plane_url", "")
-    require_valid_control_plane_url(control_plane_url)
+    require_valid_control_plane_url(request.control_plane_url)
 
     try:
         from .sandbox.manager import SandboxManager
 
         manager = SandboxManager()
         handle = await manager.warm_sandbox(
-            repo_owner=request.get("repo_owner"),
-            repo_name=request.get("repo_name"),
-            control_plane_url=control_plane_url,
+            repo_owner=request.repo_owner,
+            repo_name=request.repo_name,
+            control_plane_url=request.control_plane_url or "",
         )
 
         return {
@@ -258,7 +315,7 @@ async def api_warm_sandbox(
         outcome = "error"
         http_status = 500
         log.error("api.error", exc=e, endpoint_name="api_warm_sandbox")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         duration_ms = int((time.time() - start_time) * 1000)
         log.info(
@@ -324,7 +381,7 @@ def api_snapshot(
         outcome = "error"
         http_status = 500
         log.error("api.error", exc=e, endpoint_name="api_snapshot")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         duration_ms = int((time.time() - start_time) * 1000)
         log.info(
@@ -345,7 +402,7 @@ def api_snapshot(
 @app.function(image=function_image, secrets=[internal_api_secret])
 @fastapi_endpoint(method="POST")
 async def api_snapshot_sandbox(
-    request: dict,
+    request: SnapshotSandboxRequest,
     authorization: str | None = Header(None),
     x_trace_id: str | None = Header(None),
     x_request_id: str | None = Header(None),
@@ -385,15 +442,13 @@ async def api_snapshot_sandbox(
 
     require_auth(authorization)
 
-    sandbox_id = request.get("sandbox_id")
-    if not sandbox_id:
-        raise HTTPException(status_code=400, detail="sandbox_id is required")
+    sandbox_id = request.sandbox_id
 
     try:
         from .sandbox.manager import SandboxManager
 
-        session_id = request.get("session_id")
-        reason = request.get("reason", "manual")
+        session_id = request.session_id
+        reason = request.reason
 
         manager = SandboxManager()
 
@@ -422,7 +477,7 @@ async def api_snapshot_sandbox(
         outcome = "error"
         http_status = 500
         log.error("api.error", exc=e, endpoint_name="api_snapshot_sandbox")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         duration_ms = int((time.time() - start_time) * 1000)
         log.info(
@@ -443,7 +498,7 @@ async def api_snapshot_sandbox(
 @app.function(image=function_image, secrets=[github_app_secrets, internal_api_secret])
 @fastapi_endpoint(method="POST")
 async def api_restore_sandbox(
-    request: dict,
+    request: RestoreSandboxRequest,
     authorization: str | None = Header(None),
     x_trace_id: str | None = Header(None),
     x_request_id: str | None = Header(None),
@@ -489,22 +544,18 @@ async def api_restore_sandbox(
 
     require_auth(authorization)
 
-    control_plane_url = request.get("control_plane_url", "")
-    require_valid_control_plane_url(control_plane_url)
-
-    snapshot_image_id = request.get("snapshot_image_id")
-    if not snapshot_image_id:
-        raise HTTPException(status_code=400, detail="snapshot_image_id is required")
+    require_valid_control_plane_url(request.control_plane_url)
 
     try:
         from .auth.github_app import generate_installation_token
         from .sandbox.manager import DEFAULT_SANDBOX_TIMEOUT_SECONDS, SandboxManager
 
-        session_config = request.get("session_config", {})
-        sandbox_id = request.get("sandbox_id")
-        sandbox_auth_token = request.get("sandbox_auth_token", "")
-        user_env_vars = request.get("user_env_vars") or None
-        timeout_seconds = int(request.get("timeout_seconds", DEFAULT_SANDBOX_TIMEOUT_SECONDS))
+        snapshot_image_id = request.snapshot_image_id
+        session_config = request.session_config
+        sandbox_id = request.sandbox_id
+        sandbox_auth_token = request.sandbox_auth_token
+        user_env_vars = request.user_env_vars
+        timeout_seconds = request.timeout_seconds or DEFAULT_SANDBOX_TIMEOUT_SECONDS
 
         manager = SandboxManager()
 
@@ -528,7 +579,7 @@ async def api_restore_sandbox(
             snapshot_image_id=snapshot_image_id,
             session_config=session_config,
             sandbox_id=sandbox_id,
-            control_plane_url=control_plane_url,
+            control_plane_url=request.control_plane_url or "",
             sandbox_auth_token=sandbox_auth_token,
             github_app_token=github_app_token,
             user_env_vars=user_env_vars,
@@ -551,7 +602,7 @@ async def api_restore_sandbox(
         outcome = "error"
         http_status = 500
         log.error("api.error", exc=e, endpoint_name="api_restore_sandbox")
-        return {"success": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         duration_ms = int((time.time() - start_time) * 1000)
         log.info(
