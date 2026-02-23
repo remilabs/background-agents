@@ -8,7 +8,7 @@ import type {
 import type { Logger } from "./logger";
 import { generateInstallationToken, postReaction } from "./github-auth";
 import { buildCodeReviewPrompt, buildCommentActionPrompt } from "./prompts";
-import { generateInternalToken } from "./utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { getGitHubConfig } from "./utils/integration-config";
 
 async function getAuthHeaders(env: Env, traceId: string): Promise<Record<string, string>> {

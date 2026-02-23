@@ -11,7 +11,7 @@ import type {
   ToolCallSummary,
   ArtifactInfo,
 } from "../types";
-import { generateInternalToken } from "../utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { createLogger } from "../logger";
 
 const log = createLogger("extractor");

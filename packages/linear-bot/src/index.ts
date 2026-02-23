@@ -30,7 +30,7 @@ import {
   updateAgentSession,
   getRepoSuggestions,
 } from "./utils/linear-client";
-import { generateInternalToken } from "./utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { classifyRepo } from "./classifier/index";
 import { getAvailableRepos } from "./classifier/repos";
 import { callbacksRouter } from "./callbacks";

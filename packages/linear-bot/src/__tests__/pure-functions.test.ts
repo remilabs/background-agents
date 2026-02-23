@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractModelFromLabels, resolveStaticRepo } from "../index";
-import { isValidPayload, verifyCallbackSignature } from "../callbacks";
+import { isValidPayload } from "../callbacks";
+import { verifyCallbackSignature } from "@open-inspect/shared";
 import type { CompletionCallback } from "../types";
 
 // ─── extractModelFromLabels ──────────────────────────────────────────────────

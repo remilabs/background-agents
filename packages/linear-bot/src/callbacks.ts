@@ -12,31 +12,10 @@ import {
   updateAgentSession,
 } from "./utils/linear-client";
 import { extractAgentResponse, formatAgentResponse } from "./completion/extractor";
-import { timingSafeEqual } from "@open-inspect/shared";
+import { verifyCallbackSignature } from "@open-inspect/shared";
 import { createLogger } from "./logger";
 
 const log = createLogger("callback");
-
-export async function verifyCallbackSignature(
-  payload: CompletionCallback,
-  secret: string
-): Promise<boolean> {
-  const { signature, ...data } = payload;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signatureData = encoder.encode(JSON.stringify(data));
-  const expectedSig = await crypto.subtle.sign("HMAC", key, signatureData);
-  const expectedHex = Array.from(new Uint8Array(expectedSig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return timingSafeEqual(signature, expectedHex);
-}
 
 export function isValidPayload(payload: unknown): payload is CompletionCallback {
   if (!payload || typeof payload !== "object") return false;
@@ -146,20 +125,8 @@ callbacksRouter.post("/tool_call", async (c) => {
   }
 
   // Verify signature (same pattern as /complete)
-  const { signature, ...data } = payload;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(c.env.INTERNAL_CALLBACK_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const expectedSig = await crypto.subtle.sign("HMAC", key, encoder.encode(JSON.stringify(data)));
-  const expectedHex = Array.from(new Uint8Array(expectedSig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  if (!timingSafeEqual(signature, expectedHex)) {
+  const isValidSig = await verifyCallbackSignature(payload, c.env.INTERNAL_CALLBACK_SECRET);
+  if (!isValidSig) {
     return c.json({ error: "unauthorized" }, 401);
   }
 
