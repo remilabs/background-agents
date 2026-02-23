@@ -17,8 +17,8 @@ type SessionRow = {
 const QUERY_PATTERNS = {
   INSERT_SESSION: /^INSERT OR IGNORE INTO sessions/,
   SELECT_BY_ID: /^SELECT \* FROM sessions WHERE id = \?$/,
-  SELECT_COUNT: /^SELECT COUNT\(\*\) as count FROM sessions\b/,
-  SELECT_LIST: /^SELECT \* FROM sessions\b.*ORDER BY updated_at DESC LIMIT/,
+  SELECT_LIST:
+    /^SELECT \*, COUNT\(\*\) OVER\(\) as total_count FROM sessions\b.*ORDER BY updated_at DESC LIMIT/,
   UPDATE_STATUS: /^UPDATE sessions SET status = \?/,
   DELETE_SESSION: /^DELETE FROM sessions WHERE id = \?$/,
 } as const;
@@ -42,11 +42,6 @@ class FakeD1Database {
       return this.rows.get(id) ?? null;
     }
 
-    if (QUERY_PATTERNS.SELECT_COUNT.test(normalized)) {
-      const filtered = this.applyWhereConditions(normalized, args);
-      return { count: filtered.length };
-    }
-
     throw new Error(`Unexpected first() query: ${query}`);
   }
 
@@ -66,9 +61,11 @@ class FakeD1Database {
       whereArgs.push(...allArgs);
 
       const filtered = this.applyWhereConditions(normalized, whereArgs);
+      const totalCount = filtered.length;
       const sorted = filtered.sort((a, b) => b.updated_at - a.updated_at);
       const paged = sorted.slice(offset, offset + limit);
-      return paged;
+      // Simulate COUNT(*) OVER() window function by attaching total_count to each row
+      return paged.map((row) => ({ ...row, total_count: totalCount }));
     }
 
     throw new Error(`Unexpected all() query: ${query}`);
@@ -193,7 +190,7 @@ function makeSession(overrides: Partial<SessionEntry> = {}): SessionEntry {
     title: "Test Session",
     repoOwner: "owner",
     repoName: "repo",
-    model: "anthropic/claude-haiku-4-5",
+    model: "anthropic/claude-sonnet-4-6",
     reasoningEffort: null,
     status: "created",
     createdAt: 1000,

@@ -189,33 +189,5 @@ export async function getValidAccessToken(
   };
 }
 
-/**
- * Generate noreply email for users with private email.
- */
-export function generateNoreplyEmail(githubUser: GitHubUser): string {
-  return `${githubUser.id}+${githubUser.login}@users.noreply.github.com`;
-}
-
-/**
- * Get best email for git commit attribution.
- */
-export function getCommitEmail(
-  githubUser: GitHubUser,
-  emails?: Array<{ email: string; primary: boolean; verified: boolean }>
-): string {
-  // Use public email if available
-  if (githubUser.email) {
-    return githubUser.email;
-  }
-
-  // Use primary verified email from list
-  if (emails) {
-    const primary = emails.find((e) => e.primary && e.verified);
-    if (primary) {
-      return primary.email;
-    }
-  }
-
-  // Fall back to noreply
-  return generateNoreplyEmail(githubUser);
-}
+// Git email utilities (generateNoreplyEmail, getCommitEmail, createGitUser)
+// are available in @open-inspect/shared/git — use those instead of duplicating here.

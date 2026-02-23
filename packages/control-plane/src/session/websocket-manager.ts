@@ -70,7 +70,12 @@ export interface SessionWebSocketManager {
   hasPersistedMapping(wsId: string): boolean;
 
   send(ws: WebSocket, message: string | object): boolean;
+  /** Send a pre-serialized string. Skips JSON.stringify — caller must ensure data is valid. */
+  sendRaw(ws: WebSocket, data: string): boolean;
   close(ws: WebSocket, code: number, reason: string): void;
+
+  /** Serialize message once and send to all matching client sockets. */
+  broadcast(mode: "all_clients" | "authenticated_only", message: string | object): void;
 
   forEachClientSocket(
     mode: "all_clients" | "authenticated_only",
@@ -89,6 +94,15 @@ export interface SessionWebSocketManager {
 
 export class SessionWebSocketManagerImpl implements SessionWebSocketManager {
   private clients = new Map<WebSocket, ClientInfo>();
+  /** Incrementally maintained set of authenticated client WebSockets. */
+  private authenticatedSockets = new Set<WebSocket>();
+  /**
+   * Whether the authenticatedSockets set has been fully populated via a
+   * complete scan. After hibernation, in-memory state is lost. The first
+   * slow-path scan discovers all DB-mapped clients and backfills the set.
+   * Once that scan completes, subsequent broadcasts use the fast path.
+   */
+  private authSetComplete = false;
   private sandboxWs: WebSocket | null = null;
 
   constructor(
@@ -193,6 +207,7 @@ export class SessionWebSocketManagerImpl implements SessionWebSocketManager {
 
   setClient(ws: WebSocket, info: ClientInfo): void {
     this.clients.set(ws, info);
+    this.authenticatedSockets.add(ws);
   }
 
   getClient(ws: WebSocket): ClientInfo | null {
@@ -202,6 +217,7 @@ export class SessionWebSocketManagerImpl implements SessionWebSocketManager {
   removeClient(ws: WebSocket): ClientInfo | null {
     const client = this.clients.get(ws) ?? null;
     this.clients.delete(ws);
+    this.authenticatedSockets.delete(ws);
     return client;
   }
 
@@ -247,6 +263,20 @@ export class SessionWebSocketManagerImpl implements SessionWebSocketManager {
     }
   }
 
+  sendRaw(ws: WebSocket, data: string): boolean {
+    try {
+      if (ws.readyState !== WebSocket.OPEN) {
+        this.log.debug("Cannot send: WebSocket not open", { ready_state: ws.readyState });
+        return false;
+      }
+      ws.send(data);
+      return true;
+    } catch (e) {
+      this.log.warn("WebSocket send failed", { error: e instanceof Error ? e : String(e) });
+      return false;
+    }
+  }
+
   close(ws: WebSocket, code: number, reason: string): void {
     try {
       ws.close(code, reason);
@@ -259,10 +289,30 @@ export class SessionWebSocketManagerImpl implements SessionWebSocketManager {
   // Broadcast
   // -------------------------------------------------------------------------
 
+  broadcast(mode: "all_clients" | "authenticated_only", message: string | object): void {
+    const data = typeof message === "string" ? message : JSON.stringify(message);
+    this.forEachClientSocket(mode, (ws) => {
+      this.sendRaw(ws, data);
+    });
+  }
+
   forEachClientSocket(
     mode: "all_clients" | "authenticated_only",
     fn: (ws: WebSocket) => void
   ): void {
+    if (mode === "authenticated_only" && this.authSetComplete) {
+      // Fast path: iterate the incrementally maintained set instead of
+      // scanning all WebSockets + classify + DB lookup per socket.
+      for (const ws of this.authenticatedSockets) {
+        if (ws.readyState === WebSocket.OPEN) {
+          fn(ws);
+        }
+      }
+      return;
+    }
+
+    // Slow path: scan all WebSockets (needed for "all_clients" mode,
+    // or post-hibernation when the authenticated set is not yet complete).
     for (const ws of this.ctx.getWebSockets()) {
       const parsed = this.classify(ws);
       if (parsed.kind === "sandbox") continue;
@@ -271,7 +321,15 @@ export class SessionWebSocketManagerImpl implements SessionWebSocketManager {
         fn(ws);
       } else if (this.isAuthenticated(ws, parsed)) {
         fn(ws);
+        // Backfill the set so subsequent broadcasts use the fast path.
+        this.authenticatedSockets.add(ws);
       }
+    }
+
+    // After a full scan in authenticated_only mode, mark the set as
+    // complete so subsequent broadcasts skip the scan.
+    if (mode === "authenticated_only") {
+      this.authSetComplete = true;
     }
   }
 
