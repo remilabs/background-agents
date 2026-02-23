@@ -10,6 +10,7 @@ import {
 } from "./sidebar";
 import { extractLatestTasks } from "@/lib/tasks";
 import type { Artifact, FileChange } from "@/types/session";
+import type { SandboxEvent } from "@open-inspect/shared";
 
 interface SessionState {
   id: string;
@@ -31,13 +32,6 @@ interface Participant {
   avatar?: string;
   status: "active" | "idle" | "away";
   lastSeen: number;
-}
-
-interface SandboxEvent {
-  type: string;
-  tool?: string;
-  args?: Record<string, unknown>;
-  timestamp: number;
 }
 
 interface SessionRightSidebarProps {

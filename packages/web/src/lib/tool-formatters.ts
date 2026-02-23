@@ -1,18 +1,9 @@
-export interface SandboxEvent {
-  type: string;
-  content?: string;
-  messageId?: string;
-  tool?: string;
-  args?: Record<string, unknown>;
-  callId?: string;
-  result?: string;
-  error?: string;
-  success?: boolean;
-  status?: string;
-  output?: string;
-  sha?: string;
-  timestamp: number;
-}
+import type { SandboxEvent } from "@open-inspect/shared";
+
+export type { SandboxEvent } from "@open-inspect/shared";
+
+/** A tool_call event extracted from the SandboxEvent discriminated union. */
+export type ToolCallEvent = Extract<SandboxEvent, { type: "tool_call" }>;
 
 /**
  * Extract just the filename from a file path
@@ -55,7 +46,7 @@ export interface FormattedToolCall {
  * Format a tool call event for compact display
  * Note: OpenCode uses camelCase field names (filePath, not file_path)
  */
-export function formatToolCall(event: SandboxEvent): FormattedToolCall {
+export function formatToolCall(event: ToolCallEvent): FormattedToolCall {
   const { tool, args, output } = event;
   const toolName = tool || "Unknown";
 
@@ -184,7 +175,7 @@ export function formatToolCall(event: SandboxEvent): FormattedToolCall {
 /**
  * Get a compact summary for a group of tool calls
  */
-export function formatToolGroup(events: SandboxEvent[]): {
+export function formatToolGroup(events: ToolCallEvent[]): {
   toolName: string;
   count: number;
   summary: string;

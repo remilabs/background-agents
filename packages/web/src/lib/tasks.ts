@@ -3,13 +3,7 @@
  */
 
 import type { Task } from "@/types/session";
-
-interface SandboxEvent {
-  type: string;
-  tool?: string;
-  args?: Record<string, unknown>;
-  timestamp: number;
-}
+import type { SandboxEvent } from "@open-inspect/shared";
 
 interface TodoWriteArgs {
   todos?: Array<{
@@ -24,9 +18,12 @@ interface TodoWriteArgs {
  * Finds the most recent TodoWrite tool_call and parses its todos
  */
 export function extractLatestTasks(events: SandboxEvent[]): Task[] {
+  type ToolCallEvent = Extract<SandboxEvent, { type: "tool_call" }>;
   // Find all TodoWrite events, get the latest one
   const todoWriteEvents = events
-    .filter((event) => event.type === "tool_call" && event.tool === "TodoWrite")
+    .filter(
+      (event): event is ToolCallEvent => event.type === "tool_call" && event.tool === "TodoWrite"
+    )
     .sort((a, b) => b.timestamp - a.timestamp);
 
   if (todoWriteEvents.length === 0) {

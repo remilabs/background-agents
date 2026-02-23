@@ -28,6 +28,7 @@ import { copyToClipboard, formatModelNameLower } from "@/lib/format";
 import { SHORTCUT_LABELS } from "@/lib/keyboard-shortcuts";
 import {
   filterComposerCommands,
+  getComposerKeyAction,
   isLatestAutocompleteResult,
   nextAutocompleteRequestVersion,
   type ComposerAutocompleteState,
@@ -44,17 +45,18 @@ import {
 } from "@open-inspect/shared";
 import { useEnabledModels } from "@/hooks/use-enabled-models";
 import { ReasoningEffortPills } from "@/components/reasoning-effort-pills";
-import type { SandboxEvent } from "@/lib/tool-formatters";
+import type { SandboxEvent } from "@open-inspect/shared";
+import type { ToolCallEvent } from "@/lib/tool-formatters";
 
 // Event grouping types
 type EventGroup =
-  | { type: "tool_group"; events: SandboxEvent[]; id: string }
+  | { type: "tool_group"; events: ToolCallEvent[]; id: string }
   | { type: "single"; event: SandboxEvent; id: string };
 
 // Group consecutive tool calls of the same type
 function groupEvents(events: SandboxEvent[]): EventGroup[] {
   const groups: EventGroup[] = [];
-  let currentToolGroup: SandboxEvent[] = [];
+  let currentToolGroup: ToolCallEvent[] = [];
   let groupIndex = 0;
 
   const flushToolGroup = () => {
@@ -81,10 +83,12 @@ function groupEvents(events: SandboxEvent[]): EventGroup[] {
     } else {
       // Flush any tool group before non-tool event
       flushToolGroup();
+      const eventId =
+        "messageId" in event ? event.messageId : String(event.timestamp ?? groupIndex);
       groups.push({
         type: "single",
         event,
-        id: `single-${event.type}-${event.messageId || event.timestamp}-${groupIndex++}`,
+        id: `single-${event.type}-${eventId}-${groupIndex++}`,
       });
     }
   }
@@ -239,25 +243,24 @@ function SessionPageContent() {
       const requestVersion = nextAutocompleteRequestVersion(autocompleteRequestVersionRef.current);
       autocompleteRequestVersionRef.current = requestVersion;
 
-      Promise.resolve()
-        .then(() => filterComposerCommands(COMPOSER_COMMANDS, context.query))
-        .then((options) => {
-          if (!isLatestAutocompleteResult(requestVersion, autocompleteRequestVersionRef.current)) {
-            return;
-          }
+      try {
+        const options = filterComposerCommands(COMPOSER_COMMANDS, context.query);
 
-          setSlashOptions(options);
-          setActiveSlashIndex(0);
-          setSlashMenuState(options.length > 0 ? "open" : "empty");
-        })
-        .catch(() => {
-          if (!isLatestAutocompleteResult(requestVersion, autocompleteRequestVersionRef.current)) {
-            return;
-          }
+        if (!isLatestAutocompleteResult(requestVersion, autocompleteRequestVersionRef.current)) {
+          return;
+        }
 
-          setSlashOptions([]);
-          setSlashMenuState("error");
-        });
+        setSlashOptions(options);
+        setActiveSlashIndex(0);
+        setSlashMenuState(options.length > 0 ? "open" : "empty");
+      } catch {
+        if (!isLatestAutocompleteResult(requestVersion, autocompleteRequestVersionRef.current)) {
+          return;
+        }
+
+        setSlashOptions([]);
+        setSlashMenuState("error");
+      }
     },
     [closeSlashMenu, isProcessing]
   );
@@ -385,50 +388,61 @@ function SessionPageContent() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.nativeEvent.isComposing) return;
+    const nativeEvent = e.nativeEvent as KeyboardEvent & { keyCode?: number };
+    const isImeComposing =
+      nativeEvent.isComposing || e.key === "Process" || nativeEvent.keyCode === 229;
+    const input = inputRef.current;
+    const caretIndex = input?.selectionStart ?? prompt.length;
+    const hasActiveSlashToken = Boolean(getSlashTokenContext(prompt, caretIndex));
+    const effectiveMenuState = hasActiveSlashToken ? slashMenuState : "closed";
 
-    const hasSelectableOption = slashMenuState === "open" && slashOptions.length > 0;
-    const selectedCommand = slashOptions[activeSlashIndex] || slashOptions[0];
-
-    if (slashMenuState !== "closed") {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeSlashMenu();
-        return;
-      }
-
-      if (hasSelectableOption && e.key === "ArrowDown") {
-        e.preventDefault();
-        setActiveSlashIndex((current) => (current + 1) % slashOptions.length);
-        return;
-      }
-
-      if (hasSelectableOption && e.key === "ArrowUp") {
-        e.preventDefault();
-        setActiveSlashIndex((current) =>
-          current === 0 ? slashOptions.length - 1 : Math.max(0, current - 1)
-        );
-        return;
-      }
-
-      if (hasSelectableOption && e.key === "Tab") {
-        e.preventDefault();
-        if (selectedCommand) {
-          insertSlashCommand(selectedCommand);
-        }
-        return;
-      }
-
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        if (hasSelectableOption && selectedCommand) {
-          insertSlashCommand(selectedCommand);
-        }
-        return;
-      }
+    if (!hasActiveSlashToken && slashMenuState !== "closed") {
+      closeSlashMenu();
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
+    const selectedCommand = slashOptions[activeSlashIndex] || slashOptions[0];
+    const keyAction = getComposerKeyAction({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      isComposing: isImeComposing,
+      menuState: effectiveMenuState,
+      optionCount: slashOptions.length,
+    });
+
+    if (keyAction === "close_menu") {
+      e.preventDefault();
+      closeSlashMenu();
+      return;
+    }
+
+    if (keyAction === "move_next") {
+      e.preventDefault();
+      setActiveSlashIndex((current) => (current + 1) % slashOptions.length);
+      return;
+    }
+
+    if (keyAction === "move_prev") {
+      e.preventDefault();
+      setActiveSlashIndex((current) =>
+        current === 0 ? slashOptions.length - 1 : Math.max(0, current - 1)
+      );
+      return;
+    }
+
+    if (keyAction === "select_option") {
+      e.preventDefault();
+      if (selectedCommand) {
+        insertSlashCommand(selectedCommand);
+      }
+      return;
+    }
+
+    if (keyAction === "block_send") {
+      e.preventDefault();
+      return;
+    }
+
+    if (keyAction === "submit_prompt") {
       e.preventDefault();
       handleSubmit(e);
     }
@@ -746,44 +760,86 @@ function SessionContent({
     }
   }, [events, messagesEndRef]);
 
-  // Deduplicate and group events for rendering
-  const groupedEvents = useMemo(() => {
-    const filteredEvents: SandboxEvent[] = [];
-    const seenToolCalls = new Map<string, number>();
-    const seenCompletions = new Set<string>();
-    const seenTokens = new Map<string, number>();
+  // Incremental deduplication and grouping of events.
+  // Tracks processing state across renders via refs so only new events are scanned.
+  const dedupStateRef = useRef<{
+    /** Source array identity from last computation */
+    sourceEvents: SandboxEvent[] | null;
+    /** Number of source events already processed */
+    processedCount: number;
+    /** Deduplication lookup maps (indices into filteredEvents) */
+    seenToolCalls: Map<string, number>;
+    seenCompletions: Set<string>;
+    seenTokens: Map<string, number>;
+    /** Accumulated deduplicated events */
+    filteredEvents: (SandboxEvent | null)[];
+    /** Cached final result */
+    grouped: EventGroup[];
+  }>({
+    sourceEvents: null,
+    processedCount: 0,
+    seenToolCalls: new Map(),
+    seenCompletions: new Set(),
+    seenTokens: new Map(),
+    filteredEvents: [],
+    grouped: [],
+  });
 
-    for (const event of events as SandboxEvent[]) {
+  const groupedEvents = useMemo(() => {
+    const state = dedupStateRef.current;
+
+    // If the events array identity changed (full replacement, e.g. reconnect / history prepend),
+    // reset all incremental state and reprocess from scratch.
+    if (state.sourceEvents !== events) {
+      state.sourceEvents = events;
+      state.processedCount = 0;
+      state.seenToolCalls = new Map();
+      state.seenCompletions = new Set();
+      state.seenTokens = new Map();
+      state.filteredEvents = [];
+    }
+
+    const startIdx = state.processedCount;
+    if (startIdx >= events.length && state.grouped.length > 0) {
+      return state.grouped;
+    }
+
+    const changed = startIdx < events.length;
+
+    for (let i = startIdx; i < events.length; i++) {
+      const event = events[i] as SandboxEvent;
       if (event.type === "tool_call" && event.callId) {
-        // Deduplicate tool_call events by callId - keep the latest (most complete) one
-        const existingIdx = seenToolCalls.get(event.callId);
+        const existingIdx = state.seenToolCalls.get(event.callId);
         if (existingIdx !== undefined) {
-          filteredEvents[existingIdx] = event;
+          state.filteredEvents[existingIdx] = event;
         } else {
-          seenToolCalls.set(event.callId, filteredEvents.length);
-          filteredEvents.push(event);
+          state.seenToolCalls.set(event.callId, state.filteredEvents.length);
+          state.filteredEvents.push(event);
         }
       } else if (event.type === "execution_complete" && event.messageId) {
-        // Skip duplicate execution_complete for the same message
-        if (!seenCompletions.has(event.messageId)) {
-          seenCompletions.add(event.messageId);
-          filteredEvents.push(event);
+        if (!state.seenCompletions.has(event.messageId)) {
+          state.seenCompletions.add(event.messageId);
+          state.filteredEvents.push(event);
         }
       } else if (event.type === "token" && event.messageId) {
-        // Deduplicate tokens by messageId - keep latest at its chronological position
-        const existingIdx = seenTokens.get(event.messageId);
+        const existingIdx = state.seenTokens.get(event.messageId);
         if (existingIdx !== undefined) {
-          filteredEvents[existingIdx] = null as unknown as SandboxEvent;
+          state.filteredEvents[existingIdx] = null;
         }
-        seenTokens.set(event.messageId, filteredEvents.length);
-        filteredEvents.push(event);
+        state.seenTokens.set(event.messageId, state.filteredEvents.length);
+        state.filteredEvents.push(event);
       } else {
-        // All other events (user_message, git_sync, etc.) - add as-is
-        filteredEvents.push(event);
+        state.filteredEvents.push(event);
       }
     }
 
-    return groupEvents(filteredEvents.filter(Boolean) as SandboxEvent[]);
+    state.processedCount = events.length;
+
+    if (changed) {
+      state.grouped = groupEvents(state.filteredEvents.filter(Boolean) as SandboxEvent[]);
+    }
+
+    return state.grouped;
   }, [events]);
 
   const resolvedRepoOwner = sessionState?.repoOwner ?? fallbackSessionInfo.repoOwner;
@@ -1293,27 +1349,13 @@ const EventItem = memo(function EventItem({
   event,
   currentParticipantId,
 }: {
-  event: {
-    type: string;
-    content?: string;
-    tool?: string;
-    args?: Record<string, unknown>;
-    result?: string;
-    error?: string;
-    success?: boolean;
-    status?: string;
-    timestamp: number;
-    author?: {
-      participantId: string;
-      name: string;
-      avatar?: string;
-    };
-  };
+  event: SandboxEvent;
   currentParticipantId: string | null;
 }) {
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const time = new Date(event.timestamp * 1000).toLocaleTimeString();
+  const ts = "timestamp" in event ? event.timestamp : undefined;
+  const time = ts ? new Date(ts * 1000).toLocaleTimeString() : "";
 
   useEffect(() => {
     return () => {

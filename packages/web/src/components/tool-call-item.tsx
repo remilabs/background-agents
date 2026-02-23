@@ -1,10 +1,10 @@
 "use client";
 
-import type { SandboxEvent } from "@/lib/tool-formatters";
+import type { ToolCallEvent } from "@/lib/tool-formatters";
 import { formatToolCall } from "@/lib/tool-formatters";
 
 interface ToolCallItemProps {
-  event: SandboxEvent;
+  event: ToolCallEvent;
   isExpanded: boolean;
   onToggle: () => void;
   showTime?: boolean;

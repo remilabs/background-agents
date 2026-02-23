@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Artifact } from "@/types/session";
+import type { SandboxEvent } from "@open-inspect/shared";
 
 // WebSocket URL (should come from env in production)
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8787";
@@ -17,26 +18,6 @@ interface Message {
   source: string;
   status: string;
   createdAt: number;
-}
-
-interface SandboxEvent {
-  type: string;
-  content?: string;
-  messageId?: string;
-  tool?: string;
-  args?: Record<string, unknown>;
-  callId?: string;
-  result?: string;
-  error?: string;
-  success?: boolean;
-  status?: string;
-  sha?: string;
-  timestamp: number;
-  author?: {
-    participantId: string;
-    name: string;
-    avatar?: string;
-  };
 }
 
 interface SessionState {
@@ -103,15 +84,17 @@ function collapseTokenEvents(
   pendingTextRef: React.MutableRefObject<{
     content: string;
     messageId: string;
+    sandboxId: string;
     timestamp: number;
   } | null>
 ): SandboxEvent[] {
   const result: SandboxEvent[] = [];
   for (const evt of events) {
-    if (evt.type === "token" && evt.content && evt.messageId) {
+    if (evt.type === "token") {
       pendingTextRef.current = {
         content: evt.content,
         messageId: evt.messageId,
+        sandboxId: evt.sandboxId,
         timestamp: evt.timestamp,
       };
     } else if (evt.type === "execution_complete") {
@@ -122,6 +105,7 @@ function collapseTokenEvents(
           type: "token",
           content: pending.content,
           messageId: pending.messageId,
+          sandboxId: pending.sandboxId,
           timestamp: pending.timestamp,
         });
       }
@@ -141,9 +125,12 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
   const wsTokenRef = useRef<string | null>(null);
   // Accumulates text during streaming, displayed only on completion to avoid duplicate display.
   // Stores only the latest token since token events contain the full accumulated text (not incremental).
-  const pendingTextRef = useRef<{ content: string; messageId: string; timestamp: number } | null>(
-    null
-  );
+  const pendingTextRef = useRef<{
+    content: string;
+    messageId: string;
+    sandboxId: string;
+    timestamp: number;
+  } | null>(null);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [replaying, setReplaying] = useState(true);
@@ -164,6 +151,33 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
 
+  // RAF-batched event accumulation to avoid O(N) spread copies per event
+  const eventBufferRef = useRef<SandboxEvent[]>([]);
+  const rafIdRef = useRef<number | null>(null);
+
+  const flushEventBuffer = useCallback(() => {
+    rafIdRef.current = null;
+    const buffer = eventBufferRef.current;
+    if (buffer.length === 0) return;
+    eventBufferRef.current = [];
+    setEvents((prev) => {
+      const next = new Array(prev.length + buffer.length);
+      for (let i = 0; i < prev.length; i++) next[i] = prev[i];
+      for (let i = 0; i < buffer.length; i++) next[prev.length + i] = buffer[i];
+      return next;
+    });
+  }, []);
+
+  const enqueueEvent = useCallback(
+    (event: SandboxEvent) => {
+      eventBufferRef.current.push(event);
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(flushEventBuffer);
+      }
+    },
+    [flushEventBuffer]
+  );
+
   // Pagination state
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -171,36 +185,39 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
 
   /**
    * Process a single live sandbox_event.
+   * Uses RAF-batched enqueueEvent to avoid O(N) spread copies per event.
    */
-  const processSandboxEvent = useCallback((event: SandboxEvent) => {
-    if (event.type === "token" && event.content && event.messageId) {
-      // Accumulate text but DON'T display yet
-      pendingTextRef.current = {
-        content: event.content,
-        messageId: event.messageId,
-        timestamp: event.timestamp,
-      };
-    } else if (event.type === "execution_complete") {
-      // On completion: Add final text to events using the token's original timestamp
-      if (pendingTextRef.current) {
-        const pending = pendingTextRef.current;
-        pendingTextRef.current = null;
-        setEvents((prev) => [
-          ...prev,
-          {
+  const processSandboxEvent = useCallback(
+    (event: SandboxEvent) => {
+      if (event.type === "token") {
+        // Accumulate text but DON'T display yet
+        pendingTextRef.current = {
+          content: event.content,
+          messageId: event.messageId,
+          sandboxId: event.sandboxId,
+          timestamp: event.timestamp,
+        };
+      } else if (event.type === "execution_complete") {
+        // On completion: Add final text to events using the token's original timestamp
+        if (pendingTextRef.current) {
+          const pending = pendingTextRef.current;
+          pendingTextRef.current = null;
+          enqueueEvent({
             type: "token",
             content: pending.content,
             messageId: pending.messageId,
+            sandboxId: pending.sandboxId,
             timestamp: pending.timestamp,
-          },
-        ]);
+          });
+        }
+        enqueueEvent(event);
+      } else {
+        // Other events (tool_call, user_message, git_sync, etc.) - add normally
+        enqueueEvent(event);
       }
-      setEvents((prev) => [...prev, event]);
-    } else {
-      // Other events (tool_call, user_message, git_sync, etc.) - add normally
-      setEvents((prev) => [...prev, event]);
-    }
-  }, []);
+    },
+    [enqueueEvent]
+  );
 
   const handleMessage = useCallback(
     (data: {
@@ -246,6 +263,13 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
           if (data.participant) {
             currentParticipantRef.current = data.participant;
           }
+
+          // Clear any buffered events before replacing with replay data
+          if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current);
+            rafIdRef.current = null;
+          }
+          eventBufferRef.current = [];
 
           // Process batched replay events in a single state update
           setEvents(data.replay ? collapseTokenEvents(data.replay.events, pendingTextRef) : []);
@@ -582,18 +606,16 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
     if (pendingTextRef.current) {
       const pending = pendingTextRef.current;
       pendingTextRef.current = null;
-      setEvents((prev) => [
-        ...prev,
-        {
-          type: "token",
-          content: pending.content,
-          messageId: pending.messageId,
-          timestamp: pending.timestamp,
-        },
-      ]);
+      enqueueEvent({
+        type: "token",
+        content: pending.content,
+        messageId: pending.messageId,
+        sandboxId: pending.sandboxId,
+        timestamp: pending.timestamp,
+      });
     }
     wsRef.current.send(JSON.stringify({ type: "stop" }));
-  }, []);
+  }, [enqueueEvent]);
 
   const sendTyping = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -638,6 +660,11 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      eventBufferRef.current = [];
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;

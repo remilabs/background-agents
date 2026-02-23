@@ -1,12 +1,12 @@
 "use client";
 
 import { memo, useState } from "react";
-import type { SandboxEvent } from "@/lib/tool-formatters";
+import type { ToolCallEvent } from "@/lib/tool-formatters";
 import { formatToolGroup } from "@/lib/tool-formatters";
 import { ToolCallItem } from "./tool-call-item";
 
 interface ToolCallGroupProps {
-  events: SandboxEvent[];
+  events: ToolCallEvent[];
   groupId: string;
 }
 
