@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SELF, env } from "cloudflare:test";
-import { generateInternalToken } from "../../src/auth/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { cleanD1Tables } from "./cleanup";
 
 describe("HMAC authentication", () => {

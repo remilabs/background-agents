@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SELF, env } from "cloudflare:test";
-import { generateInternalToken } from "../../src/auth/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await generateInternalToken(env.INTERNAL_CALLBACK_SECRET!);
@@ -17,14 +17,26 @@ describe("Worker fetch handler", () => {
     expect(body.error).toBe("Not found");
   });
 
-  it("handles CORS preflight OPTIONS requests", async () => {
+  it("handles CORS preflight OPTIONS requests without Origin header", async () => {
     const response = await SELF.fetch("https://test.local/sessions", {
       method: "OPTIONS",
     });
     expect(response.status).toBe(200);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    // No Access-Control-Allow-Origin when Origin header is absent
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     expect(response.headers.get("Access-Control-Allow-Methods")).toContain("GET");
     expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+  });
+
+  it("returns matching origin in CORS preflight when Origin matches WEB_APP_URL", async () => {
+    // WEB_APP_URL is not configured in test env, so even with an Origin header
+    // the CORS allow-origin header should not be set
+    const response = await SELF.fetch("https://test.local/sessions", {
+      method: "OPTIONS",
+      headers: { Origin: "https://some-app.example.com" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   it("returns healthy on GET /health", async () => {
