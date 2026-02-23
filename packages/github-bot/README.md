@@ -60,7 +60,7 @@ The bot is deployed via Terraform as a standalone Cloudflare Worker alongside th
 | ---------------------------- | --------------------- | ----------------------------------------------------------------------------------- |
 | `CONTROL_PLANE`              | Service binding       | Fetcher to the control plane worker                                                 |
 | `DEPLOYMENT_NAME`            | Plain text            | Deployment identifier for logging                                                   |
-| `DEFAULT_MODEL`              | Plain text            | Model ID for new sessions (e.g., `anthropic/claude-haiku-4-5`)                      |
+| `DEFAULT_MODEL`              | Plain text            | Model ID for new sessions (e.g., `anthropic/claude-sonnet-4-6`)                     |
 | `GITHUB_BOT_USERNAME`        | Plain text            | Bot's GitHub login (e.g., `my-app[bot]`) for @mention detection and loop prevention |
 | `GITHUB_APP_ID`              | Secret                | GitHub App ID for JWT generation                                                    |
 | `GITHUB_APP_PRIVATE_KEY`     | Secret                | GitHub App private key (must be PKCS#8 format)                                      |

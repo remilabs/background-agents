@@ -19,7 +19,7 @@ import {
 import { createClassifier } from "./classifier";
 import { getAvailableRepos } from "./classifier/repos";
 import { callbacksRouter } from "./callbacks";
-import { generateInternalToken } from "./utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { createLogger } from "./logger";
 import {
   MODEL_OPTIONS,

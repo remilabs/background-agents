@@ -12,21 +12,11 @@ import {
   updateAgentSession,
 } from "./utils/linear-client";
 import { extractAgentResponse, formatAgentResponse } from "./completion/extractor";
-import { timingSafeEqual } from "@open-inspect/shared";
-import { computeHmacHex } from "./utils/crypto";
+import { verifyCallbackSignature } from "@open-inspect/shared";
 import { makePlan } from "./plan";
 import { createLogger } from "./logger";
 
 const log = createLogger("callback");
-
-export async function verifyCallbackSignature<T extends { signature: string }>(
-  payload: T,
-  secret: string
-): Promise<boolean> {
-  const { signature, ...data } = payload;
-  const expectedHex = await computeHmacHex(JSON.stringify(data), secret);
-  return timingSafeEqual(signature, expectedHex);
-}
 
 export function isValidPayload(payload: unknown): payload is CompletionCallback {
   if (!payload || typeof payload !== "object") return false;

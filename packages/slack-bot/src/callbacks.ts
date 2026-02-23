@@ -7,6 +7,7 @@ import type { Env, CompletionCallback } from "./types";
 import { extractAgentResponse } from "./completion/extractor";
 import { buildCompletionBlocks, getFallbackText } from "./completion/blocks";
 import { postMessage, removeReaction } from "./utils/slack-client";
+import { verifyCallbackSignature } from "@open-inspect/shared";
 import { createLogger } from "./logger";
 
 const log = createLogger("callback");
@@ -33,31 +34,6 @@ async function clearThinkingReaction(
       slack_error: reactionResult.error,
     });
   }
-}
-
-/**
- * Verify internal callback signature using shared secret.
- * Prevents external callers from forging completion callbacks.
- */
-async function verifyCallbackSignature(
-  payload: CompletionCallback,
-  secret: string
-): Promise<boolean> {
-  const { signature, ...data } = payload;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signatureData = encoder.encode(JSON.stringify(data));
-  const expectedSig = await crypto.subtle.sign("HMAC", key, signatureData);
-  const expectedHex = Array.from(new Uint8Array(expectedSig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return signature === expectedHex;
 }
 
 /**

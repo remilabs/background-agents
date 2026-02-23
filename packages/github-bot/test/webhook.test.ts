@@ -26,7 +26,7 @@ function makeEnv() {
     GITHUB_WEBHOOK_SECRET: SECRET,
     GITHUB_BOT_USERNAME: "test-bot[bot]",
     DEPLOYMENT_NAME: "test",
-    DEFAULT_MODEL: "anthropic/claude-haiku-4-5",
+    DEFAULT_MODEL: "anthropic/claude-sonnet-4-6",
     LOG_LEVEL: "error",
   } as unknown as Env;
 }

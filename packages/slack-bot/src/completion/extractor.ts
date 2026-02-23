@@ -12,7 +12,7 @@ import type {
   ArtifactInfo,
 } from "../types";
 import type { ArtifactType } from "@open-inspect/shared";
-import { generateInternalToken } from "../utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { createLogger } from "../logger";
 
 const log = createLogger("extractor");

@@ -4,7 +4,8 @@ import {
   resolveSessionModelSettings,
   resolveStaticRepo,
 } from "../model-resolution";
-import { isValidPayload, verifyCallbackSignature } from "../callbacks";
+import { isValidPayload } from "../callbacks";
+import { verifyCallbackSignature } from "@open-inspect/shared";
 import type { CompletionCallback } from "../types";
 
 // ─── extractModelFromLabels ──────────────────────────────────────────────────

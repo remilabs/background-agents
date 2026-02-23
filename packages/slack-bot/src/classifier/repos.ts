@@ -8,7 +8,7 @@
 
 import type { Env, RepoConfig, ControlPlaneRepo, ControlPlaneReposResponse } from "../types";
 import { normalizeRepoId } from "../utils/repo";
-import { generateInternalToken } from "../utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { createLogger } from "../logger";
 
 const log = createLogger("repos");

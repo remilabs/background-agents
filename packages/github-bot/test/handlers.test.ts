@@ -15,9 +15,13 @@ vi.mock("../src/github-auth", () => ({
   checkSenderPermission: vi.fn().mockResolvedValue({ hasPermission: true }),
 }));
 
-vi.mock("../src/utils/internal", () => ({
-  generateInternalToken: vi.fn().mockResolvedValue("test-internal-token"),
-}));
+vi.mock("@open-inspect/shared", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    generateInternalToken: vi.fn().mockResolvedValue("test-internal-token"),
+  };
+});
 
 vi.mock("../src/utils/integration-config", () => ({
   getGitHubConfig: vi.fn().mockResolvedValue({
@@ -78,7 +82,7 @@ function createMockEnv(): Env {
   return {
     CONTROL_PLANE: { fetch: controlPlaneFetch } as unknown as Fetcher,
     DEPLOYMENT_NAME: "test",
-    DEFAULT_MODEL: "anthropic/claude-haiku-4-5",
+    DEFAULT_MODEL: "anthropic/claude-sonnet-4-6",
     GITHUB_BOT_USERNAME: "test-bot[bot]",
     GITHUB_APP_ID: "12345",
     GITHUB_APP_PRIVATE_KEY: "test-key",
