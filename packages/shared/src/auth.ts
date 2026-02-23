@@ -13,6 +13,13 @@ const TOKEN_VALIDITY_MS = 5 * 60 * 1000;
 
 /**
  * Constant-time string comparison to prevent timing attacks.
+ *
+ * **Length caveat:** Returns `false` early when the two strings differ in
+ * length, which leaks length information through timing.  This is acceptable
+ * for HMAC-digest comparisons where both operands are always the same length
+ * by construction.  Do NOT use this function to compare values whose lengths
+ * are attacker-controlled (e.g. raw auth-header strings); extract the
+ * fixed-length portion first.
  */
 export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) {
@@ -99,5 +106,41 @@ export async function verifyInternalToken(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
+  return timingSafeEqual(signature, expectedHex);
+}
+
+/**
+ * Verify an HMAC-SHA256 callback signature on a payload.
+ *
+ * Separates the `signature` field from the rest of the payload,
+ * JSON-stringifies the remaining fields, and compares the HMAC
+ * of that string against the provided signature using timing-safe
+ * comparison.
+ *
+ * Used by bot services to verify completion/tool-call callbacks
+ * from the control plane.
+ *
+ * @param payload - Object with a `signature` field and arbitrary other fields
+ * @param secret - The shared HMAC secret
+ * @returns true if the signature is valid
+ */
+export async function verifyCallbackSignature<T extends { signature: string }>(
+  payload: T,
+  secret: string
+): Promise<boolean> {
+  const { signature, ...data } = payload;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signatureData = encoder.encode(JSON.stringify(data));
+  const expectedSig = await crypto.subtle.sign("HMAC", key, signatureData);
+  const expectedHex = Array.from(new Uint8Array(expectedSig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   return timingSafeEqual(signature, expectedHex);
 }

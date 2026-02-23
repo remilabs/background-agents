@@ -6,4 +6,4 @@ export { encryptToken, decryptToken, generateEncryptionKey, generateId } from ".
 
 export { isGitHubAppConfigured, getGitHubAppConfig, type GitHubAppConfig } from "./github-app";
 
-export { verifyInternalToken, generateInternalToken } from "./internal";
+export { verifyInternalToken, generateInternalToken } from "@open-inspect/shared";
