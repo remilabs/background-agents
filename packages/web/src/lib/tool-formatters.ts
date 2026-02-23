@@ -1,3 +1,5 @@
+import { countLines } from "./strings";
+
 export interface SandboxEvent {
   type: string;
   content?: string;
@@ -30,14 +32,6 @@ function truncate(str: string | undefined, maxLen: number): string {
   if (!str) return "";
   if (str.length <= maxLen) return str;
   return str.slice(0, maxLen) + "...";
-}
-
-/**
- * Count lines in a string
- */
-function countLines(str: string | undefined): number {
-  if (!str) return 0;
-  return str.split("\n").length;
 }
 
 export interface FormattedToolCall {
