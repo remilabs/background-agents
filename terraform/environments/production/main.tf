@@ -14,7 +14,7 @@ locals {
   # URLs for cross-service configuration
   control_plane_host = "open-inspect-control-plane-${local.name_suffix}.${var.cloudflare_worker_subdomain}.workers.dev"
   control_plane_url  = "https://${local.control_plane_host}"
-  web_app_url        = "https://open-inspect-${local.name_suffix}.vercel.app"
+  web_app_url        = "https://open-inspect-${local.name_suffix}.${var.vercel_production_domain_suffix}"
   ws_url             = "wss://${local.control_plane_host}"
 
   # Worker script paths (deterministic output locations)
@@ -216,7 +216,7 @@ module "slack_bot_worker" {
     { name = "CONTROL_PLANE_URL", value = local.control_plane_url },
     { name = "WEB_APP_URL", value = local.web_app_url },
     { name = "DEPLOYMENT_NAME", value = var.deployment_name },
-    { name = "DEFAULT_MODEL", value = "claude-haiku-4-5" },
+    { name = "DEFAULT_MODEL", value = "anthropic/claude-sonnet-4-6" },
     { name = "CLASSIFICATION_MODEL", value = "claude-haiku-4-5" },
   ]
 
@@ -266,7 +266,7 @@ module "github_bot_worker" {
 
   plain_text_bindings = [
     { name = "DEPLOYMENT_NAME", value = var.deployment_name },
-    { name = "DEFAULT_MODEL", value = "anthropic/claude-haiku-4-5" },
+    { name = "DEFAULT_MODEL", value = "anthropic/claude-sonnet-4-6" },
     { name = "GITHUB_BOT_USERNAME", value = var.github_bot_username },
   ]
 
@@ -330,7 +330,7 @@ module "linear_bot_worker" {
     { name = "CONTROL_PLANE_URL", value = local.control_plane_url },
     { name = "WEB_APP_URL", value = local.web_app_url },
     { name = "DEPLOYMENT_NAME", value = var.deployment_name },
-    { name = "DEFAULT_MODEL", value = "claude-sonnet-4-6" },
+    { name = "DEFAULT_MODEL", value = "anthropic/claude-sonnet-4-6" },
     { name = "LINEAR_CLIENT_ID", value = var.linear_client_id },
     { name = "WORKER_URL", value = "https://open-inspect-linear-bot-${local.name_suffix}.${var.cloudflare_worker_subdomain}.workers.dev" },
   ]
@@ -416,6 +416,18 @@ module "web_app" {
     {
       key       = "ALLOWED_USERS"
       value     = var.allowed_users
+      targets   = ["production", "preview"]
+      sensitive = false
+    },
+    {
+      key       = "ALLOWED_GITHUB_TEAMS"
+      value     = var.allowed_github_teams
+      targets   = ["production", "preview"]
+      sensitive = false
+    },
+    {
+      key       = "ALLOWED_GITHUB_ORGS"
+      value     = var.allowed_github_orgs
       targets   = ["production", "preview"]
       sensitive = false
     },

@@ -35,6 +35,12 @@ variable "vercel_team_id" {
   type        = string
 }
 
+variable "vercel_production_domain_suffix" {
+  description = "Vercel production domain suffix (for example: vercel.app or vercel.<team>.com)"
+  type        = string
+  default     = "vercel.app"
+}
+
 variable "modal_token_id" {
   description = "Modal API token ID"
   type        = string
@@ -95,11 +101,6 @@ variable "enable_github_bot" {
   description = "Enable the GitHub bot worker. Requires github_webhook_secret and github_bot_username."
   type        = bool
   default     = false
-
-  validation {
-    condition     = var.enable_github_bot == false || (length(var.github_webhook_secret) > 0 && length(var.github_bot_username) > 0)
-    error_message = "When enable_github_bot is true, github_webhook_secret and github_bot_username must be non-empty."
-  }
 }
 
 variable "github_webhook_secret" {
@@ -139,15 +140,6 @@ variable "enable_linear_bot" {
   description = "Enable the Linear bot worker. Requires linear_client_id, linear_client_secret, and linear_webhook_secret."
   type        = bool
   default     = false
-
-  validation {
-    condition = var.enable_linear_bot == false || (
-      length(var.linear_client_id) > 0 &&
-      length(var.linear_client_secret) > 0 &&
-      length(var.linear_webhook_secret) > 0
-    )
-    error_message = "When enable_linear_bot is true, linear_client_id, linear_client_secret, and linear_webhook_secret must be non-empty."
-  }
 }
 
 variable "linear_client_id" {
@@ -254,6 +246,18 @@ variable "project_root" {
 
 variable "allowed_users" {
   description = "Comma-separated list of GitHub usernames allowed to sign in (empty = allow all)"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_github_teams" {
+  description = "Comma-separated list of allowed GitHub teams in org/team-slug format (empty = no team-based restrictions)"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_github_orgs" {
+  description = "Comma-separated list of allowed GitHub org names (empty = no org-based restrictions)"
   type        = string
   default     = ""
 }

@@ -160,6 +160,14 @@ enable_service_bindings = false
 # Leave empty to allow all GitHub users
 allowed_users = ""
 
+# Comma-separated list of GitHub teams in org/team-slug format
+# Example: "acme/platform,acme/security"
+allowed_github_teams = ""
+
+# Comma-separated list of GitHub org names
+# Example: "acme,partner-org"
+allowed_github_orgs = ""
+
 # Comma-separated list of email domains allowed to sign in
 # Leave empty to allow all email domains
 # Example: "example.com,corp.io"
