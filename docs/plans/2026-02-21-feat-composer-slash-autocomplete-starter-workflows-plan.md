@@ -179,7 +179,7 @@ The plan explicitly addresses these flow gaps identified by SpecFlow analysis:
 
 ## Acceptance Criteria
 
-- [ ] Typing `/` in the active session composer opens a command menu within 100 ms on typical local
+- [x] Typing `/` in the active session composer opens a command menu within 100 ms on typical local
       usage.
 - [x] Slash trigger grammar is deterministic: URL/path-like slashes (for example `https://`,
       `src/foo/bar`) do not open command menu.
@@ -207,8 +207,8 @@ The plan explicitly addresses these flow gaps identified by SpecFlow analysis:
 - [x] Composer draft is cleared only after `prompt_queued` acknowledgement; disconnected or
       unsubscribed sends preserve draft.
 - [x] Draft clear requires matching `requestId`; non-matching/stale acks do not clear current draft.
-- [ ] No regression to existing model selector, reasoning pills, and send/stop controls.
-- [ ] Keyboard-only and screen-reader navigation for menu pass implementation QA checks.
+- [x] No regression to existing model selector, reasoning pills, and send/stop controls.
+- [x] Keyboard-only and screen-reader navigation for menu pass implementation QA checks.
 - [x] Screen-reader experience includes result-count and active-option announcements via live region
       or equivalent accessible pattern.
 
@@ -265,9 +265,9 @@ The plan explicitly addresses these flow gaps identified by SpecFlow analysis:
       workflow behavior and key interactions.
 - [x] `packages/web/src/lib/keyboard-shortcuts.ts` - reconcile shortcut label copy with actual send
       behavior in composer UI.
-- [ ] `packages/web/src/app/(app)/page.tsx` - explicitly document parity decision or implement same
+- [x] `packages/web/src/app/(app)/page.tsx` - explicitly document parity decision or implement same
       command UX if in scope.
-- [ ] `packages/web/src/app/api/skills/route.ts` (optional extension) - auth-protected route for
+- [x] `packages/web/src/app/api/skills/route.ts` (optional extension) - auth-protected route for
       dynamic catalog fetch.
 
 ## MVP Pseudocode

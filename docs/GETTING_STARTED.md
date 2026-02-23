@@ -342,11 +342,14 @@ enable_service_bindings        = false
 
 # Access Control (at least one recommended for security)
 allowed_users         = "your-github-username"  # Comma-separated GitHub usernames, or empty
+allowed_github_teams  = ""                      # Comma-separated org/team-slug entries (e.g., "acme/platform")
+allowed_github_orgs   = ""                      # Comma-separated org names (e.g., "acme,partner-org")
 allowed_email_domains = ""                      # Comma-separated domains (e.g., "example.com,corp.io")
 ```
 
-> **Note**: Review `allowed_users` and `allowed_email_domains` carefully - these control who can
-> sign in. If both are empty, any GitHub user can access your deployment.
+> **Note**: Review `allowed_users`, `allowed_github_teams`, `allowed_github_orgs`, and
+> `allowed_email_domains` carefully - these control who can sign in. If all four are empty, any
+> GitHub user can access your deployment.
 
 ---
 
@@ -589,6 +592,8 @@ Go to your fork's Settings → Secrets and variables → Actions, and add:
 | `MODAL_API_SECRET`            | Generated Modal API secret                                                    |
 | `NEXTAUTH_SECRET`             | Generated NextAuth secret                                                     |
 | `ALLOWED_USERS`               | Comma-separated GitHub usernames (or empty for all users)                     |
+| `ALLOWED_GITHUB_TEAMS`        | Comma-separated org/team-slug entries (or empty for no team restriction)      |
+| `ALLOWED_GITHUB_ORGS`         | Comma-separated org names (or empty for no org restriction)                   |
 | `ALLOWED_EMAIL_DOMAINS`       | Comma-separated email domains (or empty for all domains)                      |
 | `ENABLE_GITHUB_BOT`           | `true` to deploy GitHub bot worker (or empty to skip)                         |
 | `GH_WEBHOOK_SECRET`           | GitHub webhook secret (required if GitHub bot enabled)                        |
@@ -732,6 +737,17 @@ This occurs on first deployment. Follow the two-phase deployment process:
 - Rotate secrets periodically using `terraform apply` after updating `terraform.tfvars`
 - Review the [Security Model](../README.md#security-model-single-tenant-only) - this system is
   designed for single-tenant deployment
+
+### Authorization Model (Single-Tenant Limitation)
+
+Open-Inspect uses binary authentication with no per-user authorization on internal resources. HMAC
+tokens secure service-to-service communication, and GitHub OAuth gates user sign-in, but once
+authenticated any user can access any session, view any session's history, and read or write
+repository-scoped secrets. This is by design for single-tenant and internal deployments where all
+users are trusted. Access is controlled at the perimeter via `allowed_users`,
+`allowed_github_teams`, `allowed_github_orgs`, and `allowed_email_domains` in your
+`terraform.tfvars`. If you need per-user session isolation or fine-grained permissions, additional
+authorization logic would need to be added to the control plane.
 
 ---
 

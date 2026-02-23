@@ -119,6 +119,13 @@ CACHE_BUSTER = "v24-description-of-change"
 > **Single-Tenant Design**: The GitHub App configuration uses a single installation ID
 > (`GITHUB_APP_INSTALLATION_ID`) shared by all users. This means any user can access any repository
 > the App is installed on. This system is designed for internal/single-tenant deployment only.
+>
+> **No per-session authorization (known limitation)**: There is no session-level or resource-level
+> authorization. Once a user passes perimeter auth, they can list, access, modify, and delete any
+> session regardless of who created it. They can also manage secrets for any repository the App is
+> installed on. Access control is perimeter-only via `ALLOWED_USERS`, `ALLOWED_GITHUB_ORGS`, and
+> `ALLOWED_GITHUB_TEAMS`. This is an accepted trade-off for single-tenant deployments where all
+> authenticated users are trusted equally.
 
 ### Required Secrets
 
