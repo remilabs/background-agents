@@ -1,0 +1,35 @@
+packages/control-plane/src/session/types.ts
+  f1171c699943675f 119
+packages/web/src/lib/image-utils.ts
+  f1171c699943675f 1-220
+packages/web/src/hooks/use-session-socket.ts
+  f1171c699943675f 5,69-70,563-564,574,588,594-596,598-599
+packages/control-plane/src/session/durable-object.ts
+  f1171c699943675f 170-171
+packages/control-plane/src/session/message-queue.ts
+  f1171c699943675f 23,255
+packages/shared/src/types/index.ts
+  f1171c699943675f 217
+packages/control-plane/src/router.ts
+  f1171c699943675f 61-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.5",
+  "base_commit_sha": "77ecb6add196bfab3db90d552061d8e7d6cd8bab",
+  "prompts": {
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 258,
+      "total_deletions": 18,
+      "accepted_lines": 252,
+      "overriden_lines": 0
+    }
+  }
+}
