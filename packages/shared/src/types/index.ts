@@ -237,6 +237,7 @@ export type SandboxEvent =
         name: string;
         avatar?: string;
       };
+      attachments?: Attachment[];
     };
 
 // WebSocket message types

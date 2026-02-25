@@ -15,6 +15,7 @@ import type {
   ServerMessage,
   SessionStatus,
 } from "../types";
+import type { Attachment } from "@open-inspect/shared";
 import type { SourceControlProviderName } from "../source-control";
 import type { SessionRow, ParticipantRow, SandboxCommand } from "./types";
 import type { SessionRepository } from "./repository";
@@ -28,7 +29,7 @@ interface PromptMessageData {
   model?: string;
   reasoningEffort?: string;
   requestId?: string;
-  attachments?: Array<{ type: string; name: string; url?: string; content?: string }>;
+  attachments?: Attachment[];
 }
 
 interface MessageQueueDeps {
@@ -106,7 +107,7 @@ export class SessionMessageQueue {
 
     await this.deps.setSessionStatus("active");
 
-    this.writeUserMessageEvent(participant, data.content, messageId, now);
+    this.writeUserMessageEvent(participant, data.content, messageId, now, data.attachments);
 
     const position = this.deps.repository.getPendingOrProcessingCount();
 
@@ -301,7 +302,8 @@ export class SessionMessageQueue {
     participant: ParticipantRow,
     content: string,
     messageId: string,
-    now: number
+    now: number,
+    attachments?: Attachment[]
   ): void {
     const userMessageEvent: SandboxEvent = {
       type: "user_message",
@@ -313,6 +315,7 @@ export class SessionMessageQueue {
         name: participant.scm_name || participant.scm_login || participant.user_id,
         avatar: getAvatarUrl(participant.scm_login, this.deps.scmProvider),
       },
+      ...(attachments?.length ? { attachments } : {}),
     };
     this.deps.repository.createEvent({
       id: generateId(),
@@ -330,7 +333,13 @@ export class SessionMessageQueue {
     source: string;
     model?: string;
     reasoningEffort?: string;
-    attachments?: Array<{ type: string; name: string; url?: string }>;
+    attachments?: Array<{
+      type: string;
+      name: string;
+      url?: string;
+      content?: string;
+      mimeType?: string;
+    }>;
     callbackContext?: Record<string, unknown>;
   }): Promise<{ messageId: string; status: "queued" }> {
     let participant = this.deps.participantService.getByUserId(data.authorId);
@@ -371,7 +380,7 @@ export class SessionMessageQueue {
 
     await this.deps.setSessionStatus("active");
 
-    this.writeUserMessageEvent(participant, data.content, messageId, now);
+    this.writeUserMessageEvent(participant, data.content, messageId, now, data.attachments);
 
     const queuePosition = this.deps.repository.getPendingOrProcessingCount();
 
