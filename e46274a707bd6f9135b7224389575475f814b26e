@@ -1,0 +1,23 @@
+packages/web/src/app/(app)/session/[id]/page.tsx
+  f1171c699943675f 48,50-55,219-221,371-400,403,407-409,412-413,421-424,551-555,602-606,649-653,1116-1142,1156-1185,1194-1195,1204-1214,1301,1303,1305-1307
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.5",
+  "base_commit_sha": "e46274a707bd6f9135b7224389575475f814b26e",
+  "prompts": {
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 183,
+      "total_deletions": 8,
+      "accepted_lines": 171,
+      "overriden_lines": 0
+    }
+  }
+}
