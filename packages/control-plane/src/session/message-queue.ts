@@ -333,13 +333,7 @@ export class SessionMessageQueue {
     source: string;
     model?: string;
     reasoningEffort?: string;
-    attachments?: Array<{
-      type: string;
-      name: string;
-      url?: string;
-      content?: string;
-      mimeType?: string;
-    }>;
+    attachments?: Attachment[];
     callbackContext?: Record<string, unknown>;
   }): Promise<{ messageId: string; status: "queued" }> {
     let participant = this.deps.participantService.getByUserId(data.authorId);

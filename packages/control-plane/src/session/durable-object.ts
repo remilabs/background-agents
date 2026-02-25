@@ -178,7 +178,7 @@ const EnqueuePromptSchema = z.object({
   attachments: z
     .array(
       z.object({
-        type: z.string(),
+        type: z.enum(["file", "image", "url"]),
         name: z.string(),
         url: z.string().optional(),
         content: z.string().optional(),
@@ -1321,7 +1321,13 @@ export class SessionDO extends DurableObject<Env> {
       model?: string;
       reasoningEffort?: string;
       requestId?: string;
-      attachments?: Array<{ type: string; name: string; url?: string; content?: string }>;
+      attachments?: Array<{
+        type: "file" | "image" | "url";
+        name: string;
+        url?: string;
+        content?: string;
+        mimeType?: string;
+      }>;
     }
   ): Promise<void> {
     await this.messageQueue.handlePromptMessage(ws, data);

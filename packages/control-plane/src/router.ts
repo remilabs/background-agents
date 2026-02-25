@@ -84,7 +84,7 @@ const PromptSchema = z.object({
   attachments: z
     .array(
       z.object({
-        type: z.string(),
+        type: z.enum(["file", "image", "url"]),
         name: z.string(),
         url: z.string().optional(),
         content: z.string().optional(),
