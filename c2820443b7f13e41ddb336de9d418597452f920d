@@ -1,0 +1,36 @@
+packages/modal-infra/src/sandbox/bridge.py
+  f1171c699943675f 440-493,501,510,523-527,695,697-698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.5",
+  "base_commit_sha": "c2820443b7f13e41ddb336de9d418597452f920d",
+  "prompts": {
+    "46b3d3b7fc350c0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc16832f-a5db-468c-830e-d90f0b2b804b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 92,
+      "total_deletions": 0,
+      "accepted_lines": 92,
+      "overriden_lines": 0
+    },
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 72,
+      "total_deletions": 3,
+      "accepted_lines": 72,
+      "overriden_lines": 0
+    }
+  }
+}
