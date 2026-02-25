@@ -116,6 +116,7 @@ export interface PromptCommand {
     name: string;
     url?: string;
     content?: string;
+    mimeType?: string;
   }>;
 }
 

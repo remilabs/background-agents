@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Artifact } from "@/types/session";
-import type { SandboxEvent } from "@open-inspect/shared";
+import type { SandboxEvent, Attachment } from "@open-inspect/shared";
 
 // WebSocket URL (should come from env in production)
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8787";
@@ -66,7 +66,8 @@ interface UseSessionSocketReturn {
     content: string,
     model?: string,
     reasoningEffort?: string,
-    requestId?: string
+    requestId?: string,
+    attachments?: Attachment[]
   ) => SendPromptOutcome;
   stopExecution: () => void;
   sendTyping: () => void;
@@ -559,7 +560,8 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
       content: string,
       model?: string,
       reasoningEffort?: string,
-      requestId?: string
+      requestId?: string,
+      attachments?: Attachment[]
     ): SendPromptOutcome => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         console.error("WebSocket not connected");
@@ -569,7 +571,7 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
       if (!subscribedRef.current) {
         console.error("Not subscribed yet, waiting...");
         // Retry after a short delay
-        setTimeout(() => sendPrompt(content, model, reasoningEffort, requestId), 500);
+        setTimeout(() => sendPrompt(content, model, reasoningEffort, requestId, attachments), 500);
         return "local_enqueued";
       }
 
@@ -583,15 +585,18 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
       // The server writes a user_message event to the events table and broadcasts it
       // to all clients (including the sender), which handles both display and multiplayer.
 
-      wsRef.current.send(
-        JSON.stringify({
-          type: "prompt",
-          content,
-          model, // Include model for per-message model switching
-          reasoningEffort,
-          requestId,
-        })
-      );
+      const message: Record<string, unknown> = {
+        type: "prompt",
+        content,
+        model, // Include model for per-message model switching
+        reasoningEffort,
+        requestId,
+      };
+      if (attachments?.length) {
+        message.attachments = attachments;
+      }
+
+      wsRef.current.send(JSON.stringify(message));
 
       return "accepted";
     },

@@ -167,6 +167,8 @@ const EnqueuePromptSchema = z.object({
         type: z.string(),
         name: z.string(),
         url: z.string().optional(),
+        content: z.string().optional(),
+        mimeType: z.string().optional(),
       })
     )
     .optional(),

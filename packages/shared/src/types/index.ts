@@ -214,6 +214,7 @@ export type SandboxEvent =
       messageId: string;
       timestamp: number;
       author?: { participantId: string; name: string; avatar?: string };
+      attachments?: Attachment[];
     };
 
 // WebSocket message types

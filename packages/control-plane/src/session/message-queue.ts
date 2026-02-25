@@ -20,7 +20,13 @@ interface PromptMessageData {
   model?: string;
   reasoningEffort?: string;
   requestId?: string;
-  attachments?: Array<{ type: string; name: string; url?: string; content?: string }>;
+  attachments?: Array<{
+    type: string;
+    name: string;
+    url?: string;
+    content?: string;
+    mimeType?: string;
+  }>;
 }
 
 interface MessageQueueDeps {
@@ -88,7 +94,7 @@ export class SessionMessageQueue {
       createdAt: now,
     });
 
-    this.writeUserMessageEvent(participant, data.content, messageId, now);
+    this.writeUserMessageEvent(participant, data.content, messageId, now, data.attachments);
 
     const position = this.deps.repository.getPendingOrProcessingCount();
 
@@ -239,7 +245,14 @@ export class SessionMessageQueue {
     participant: ParticipantRow,
     content: string,
     messageId: string,
-    now: number
+    now: number,
+    attachments?: Array<{
+      type: string;
+      name: string;
+      url?: string;
+      content?: string;
+      mimeType?: string;
+    }>
   ): void {
     const userMessageEvent: SandboxEvent = {
       type: "user_message",
@@ -251,6 +264,7 @@ export class SessionMessageQueue {
         name: participant.github_name || participant.github_login || participant.user_id,
         avatar: getGitHubAvatarUrl(participant.github_login),
       },
+      ...(attachments?.length ? { attachments } : {}),
     };
     this.deps.repository.createEvent({
       id: generateId(),
@@ -268,7 +282,13 @@ export class SessionMessageQueue {
     source: string;
     model?: string;
     reasoningEffort?: string;
-    attachments?: Array<{ type: string; name: string; url?: string }>;
+    attachments?: Array<{
+      type: string;
+      name: string;
+      url?: string;
+      content?: string;
+      mimeType?: string;
+    }>;
     callbackContext?: Record<string, unknown>;
   }): Promise<{ messageId: string; status: "queued" }> {
     let participant = this.deps.participantService.getByUserId(data.authorId);
@@ -307,7 +327,7 @@ export class SessionMessageQueue {
       createdAt: now,
     });
 
-    this.writeUserMessageEvent(participant, data.content, messageId, now);
+    this.writeUserMessageEvent(participant, data.content, messageId, now, data.attachments);
 
     const queuePosition = this.deps.repository.getPendingOrProcessingCount();
 
