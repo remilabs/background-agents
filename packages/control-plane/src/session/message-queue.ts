@@ -7,6 +7,7 @@ import {
   getValidModelOrDefault,
   isValidModel,
 } from "../utils/models";
+import type { Attachment } from "@open-inspect/shared";
 import type { ClientInfo, Env, MessageSource, SandboxEvent, ServerMessage } from "../types";
 import type { SessionRow, ParticipantRow, SandboxCommand } from "./types";
 import type { SessionRepository } from "./repository";
@@ -20,13 +21,7 @@ interface PromptMessageData {
   model?: string;
   reasoningEffort?: string;
   requestId?: string;
-  attachments?: Array<{
-    type: string;
-    name: string;
-    url?: string;
-    content?: string;
-    mimeType?: string;
-  }>;
+  attachments?: Attachment[];
 }
 
 interface MessageQueueDeps {
@@ -246,13 +241,7 @@ export class SessionMessageQueue {
     content: string,
     messageId: string,
     now: number,
-    attachments?: Array<{
-      type: string;
-      name: string;
-      url?: string;
-      content?: string;
-      mimeType?: string;
-    }>
+    attachments?: Attachment[]
   ): void {
     const userMessageEvent: SandboxEvent = {
       type: "user_message",
@@ -282,13 +271,7 @@ export class SessionMessageQueue {
     source: string;
     model?: string;
     reasoningEffort?: string;
-    attachments?: Array<{
-      type: string;
-      name: string;
-      url?: string;
-      content?: string;
-      mimeType?: string;
-    }>;
+    attachments?: Attachment[];
     callbackContext?: Record<string, unknown>;
   }): Promise<{ messageId: string; status: "queued" }> {
     let participant = this.deps.participantService.getByUserId(data.authorId);

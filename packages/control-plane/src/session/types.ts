@@ -112,7 +112,7 @@ export interface PromptCommand {
     githubEmail: string | null;
   };
   attachments?: Array<{
-    type: string;
+    type: "file" | "image" | "url";
     name: string;
     url?: string;
     content?: string;
