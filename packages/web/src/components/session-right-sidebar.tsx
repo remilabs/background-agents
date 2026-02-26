@@ -18,6 +18,7 @@ interface SessionState {
   repoOwner: string;
   repoName: string;
   branchName: string | null;
+  baseBranch: string;
   status: string;
   sandboxStatus: string;
   messageCount: number;
@@ -77,6 +78,7 @@ export function SessionRightSidebarContent({
           createdAt={sessionState.createdAt}
           model={sessionState.model}
           reasoningEffort={sessionState.reasoningEffort}
+          baseBranch={sessionState.baseBranch}
           branchName={sessionState.branchName || undefined}
           repoOwner={sessionState.repoOwner}
           repoName={sessionState.repoName}

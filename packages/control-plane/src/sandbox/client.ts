@@ -45,6 +45,7 @@ export interface CreateSandboxRequest {
   userEnvVars?: Record<string, string>;
   repoImageId?: string | null;
   repoImageSha?: string | null;
+  branch?: string;
 }
 
 export interface CreateSandboxResponse {
@@ -214,6 +215,7 @@ export class ModalClient {
           user_env_vars: request.userEnvVars || null,
           repo_image_id: request.repoImageId || null,
           repo_image_sha: request.repoImageSha || null,
+          branch: request.branch || null,
         }),
       });
 
