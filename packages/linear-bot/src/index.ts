@@ -30,12 +30,47 @@ import {
   updateAgentSession,
   getRepoSuggestions,
 } from "./utils/linear-client";
-import { generateInternalToken } from "@open-inspect/shared";
+import { generateInternalToken, type Attachment } from "@open-inspect/shared";
 import { classifyRepo } from "./classifier/index";
 import { getAvailableRepos } from "./classifier/repos";
 import { callbacksRouter } from "./callbacks";
 import { createLogger } from "./logger";
 import { getValidModelOrDefault, verifyInternalToken } from "@open-inspect/shared";
+
+const ALLOWED_IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_IMAGE_FETCH_BYTES = 800_000;
+const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(([^)]+)\)/;
+
+/**
+ * Extract the first image from markdown content, fetch it, and return as an Attachment.
+ */
+async function extractMarkdownImageAttachment(markdown: string): Promise<Attachment | null> {
+  const match = MARKDOWN_IMAGE_RE.exec(markdown);
+  if (!match) return null;
+
+  const url = match[1];
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+
+    const contentType = resp.headers.get("content-type")?.split(";")[0] || "";
+    if (!ALLOWED_IMAGE_MIMES.has(contentType)) return null;
+
+    const buffer = await resp.arrayBuffer();
+    if (buffer.byteLength > MAX_IMAGE_FETCH_BYTES) return null;
+
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    const ext = contentType.split("/")[1] || "png";
+    return {
+      type: "image",
+      name: `linear-image.${ext}`,
+      content: base64,
+      mimeType: contentType,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const log = createLogger("handler");
 
@@ -783,6 +818,11 @@ async function handleAgentSessionEvent(
     organizationId: orgId,
   };
 
+  // Extract first image from issue description or comment (best-effort)
+  const imageSource = issue.description || comment?.body || "";
+  const imageAtt = await extractMarkdownImageAttachment(imageSource);
+  const attachments: Attachment[] | undefined = imageAtt ? [imageAtt] : undefined;
+
   const promptRes = await env.CONTROL_PLANE.fetch(
     `https://internal/sessions/${session.sessionId}/prompt`,
     {
@@ -793,6 +833,7 @@ async function handleAgentSessionEvent(
         authorId: `linear:${webhook.appUserId}`,
         source: "linear",
         callbackContext,
+        ...(attachments?.length ? { attachments } : {}),
       }),
     }
   );
