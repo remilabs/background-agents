@@ -1,0 +1,85 @@
+packages/web/src/lib/image-utils.ts
+  1a45efb12d54f5f7 18-19
+packages/control-plane/src/session/durable-object.ts
+  1a45efb12d54f5f7 11,14,113,155,1200
+packages/modal-infra/src/sandbox/bridge.py
+  1a45efb12d54f5f7 440-444,451-452,457,463,468-476,478-481,483,485-508,514,531
+packages/control-plane/src/session/schemas.ts
+  1a45efb12d54f5f7 1-38
+packages/control-plane/src/session/types.ts
+  1a45efb12d54f5f7 15,115
+packages/control-plane/src/router.ts
+  1a45efb12d54f5f7 31,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.5",
+  "base_commit_sha": "ef361683c7e16ab11edf55436b6843c9d1e03094",
+  "prompts": {
+    "04eff4675b8e0f8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8dbcb61-f9ba-4e4c-b59e-910103009d98",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 844,
+      "total_deletions": 103,
+      "accepted_lines": 830,
+      "overriden_lines": 0
+    },
+    "1a45efb12d54f5f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f293fe0a-c9b8-4a1b-a604-ee24fac7f44e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 102,
+      "total_deletions": 60,
+      "accepted_lines": 100,
+      "overriden_lines": 0
+    },
+    "46b3d3b7fc350c0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc16832f-a5db-468c-830e-d90f0b2b804b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 667,
+      "total_deletions": 120,
+      "accepted_lines": 639,
+      "overriden_lines": 0
+    },
+    "6723bdfafba4fa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0790c9-80e7-4ef0-8528-d0364d1fb0ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 641,
+      "total_deletions": 0,
+      "accepted_lines": 641,
+      "overriden_lines": 0
+    },
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 17,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
