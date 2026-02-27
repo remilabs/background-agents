@@ -749,6 +749,13 @@ class AgentBridge:
                 }
             )
         finally:
+            # Clean up upload directory (images already sent inline to OpenCode)
+            if attachments:
+                import shutil
+
+                upload_dir = Path("/workspace/.uploads") / message_id
+                shutil.rmtree(upload_dir, ignore_errors=True)
+
             duration_ms = int((time.time() - start_time) * 1000)
             self.log.info(
                 "prompt.run",

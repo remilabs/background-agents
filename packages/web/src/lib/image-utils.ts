@@ -12,8 +12,8 @@ import type { Attachment } from "@open-inspect/shared";
 /** Anthropic's recommended max dimension for vision inputs. */
 export const MAX_IMAGE_DIMENSION = 1568;
 
-/** Max base64 size per attachment (~560 KB binary). */
-export const MAX_ATTACHMENT_SIZE_BYTES = 768 * 1024;
+/** Max base64 character count per attachment (~560 KB binary). */
+export const MAX_ATTACHMENT_BASE64_LENGTH = 768 * 1024;
 
 /** Max attachments per message (1 to fit under Cloudflare Workers 1 MB WS frame limit). */
 export const MAX_ATTACHMENTS_PER_MESSAGE = 1;
@@ -32,24 +32,13 @@ const MAGIC_BYTES: Array<{ mime: string; bytes: number[] }> = [
 // ── Validation ──
 
 /**
- * Validate image type by checking magic bytes of the file content.
- * More reliable than trusting `file.type` which can be spoofed.
- */
-export async function validateImageType(file: File): Promise<boolean> {
-  const buffer = await file.slice(0, 12).arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  return MAGIC_BYTES.some(({ bytes: magic }) => magic.every((byte, i) => bytes[i] === byte));
-}
-
-/**
  * Detect MIME type from magic bytes. Returns null if unrecognized.
  */
 async function detectMimeType(file: File): Promise<string | null> {
   const buffer = await file.slice(0, 12).arrayBuffer();
   const bytes = new Uint8Array(buffer);
 
-  // Special case: WebP has RIFF header + "WEBP" at offset 8
+  // WebP: RIFF header + "WEBP" at offset 8
   if (
     bytes[0] === 0x52 &&
     bytes[1] === 0x49 &&
@@ -97,6 +86,7 @@ function loadImage(file: File | Blob): Promise<HTMLImageElement> {
 /**
  * Resize and compress an image file for upload.
  *
+ * - Validates image type via magic bytes (throws for unsupported types)
  * - Scales down to `maxDimension` on the longest side (default 1568px)
  * - Uses JPEG at 85% quality for photos, keeps PNG for screenshots
  * - Returns base64 data URL content (without the `data:...;base64,` prefix)
@@ -104,7 +94,7 @@ function loadImage(file: File | Blob): Promise<HTMLImageElement> {
 export async function resizeAndCompress(
   file: File,
   maxDimension = MAX_IMAGE_DIMENSION,
-  maxSizeBytes = MAX_ATTACHMENT_SIZE_BYTES
+  maxBase64Length = MAX_ATTACHMENT_BASE64_LENGTH
 ): Promise<{ base64: string; mimeType: string }> {
   const detectedMime = await detectMimeType(file);
   if (!detectedMime || !ALLOWED_MIME_TYPES.has(detectedMime)) {
@@ -114,7 +104,7 @@ export async function resizeAndCompress(
   // GIFs: don't resize (would lose animation), just validate size
   if (detectedMime === "image/gif") {
     const base64 = await fileToBase64(file);
-    if (base64.length > maxSizeBytes) {
+    if (base64.length > maxBase64Length) {
       throw new Error("GIF is too large. Maximum size is ~560 KB.");
     }
     return { base64, mimeType: "image/gif" };
@@ -148,22 +138,22 @@ export async function resizeAndCompress(
   let base64 = dataUrl.split(",")[1];
 
   // If PNG is too large, fall back to JPEG
-  if (outputMime === "image/png" && base64.length > maxSizeBytes) {
+  if (outputMime === "image/png" && base64.length > maxBase64Length) {
     dataUrl = canvas.toDataURL("image/jpeg", 0.85);
     base64 = dataUrl.split(",")[1];
     return { base64, mimeType: "image/jpeg" };
   }
 
   // If still too large, reduce quality progressively
-  if (base64.length > maxSizeBytes && outputMime === "image/jpeg") {
+  if (base64.length > maxBase64Length && outputMime === "image/jpeg") {
     for (const q of [0.7, 0.5, 0.3]) {
       dataUrl = canvas.toDataURL("image/jpeg", q);
       base64 = dataUrl.split(",")[1];
-      if (base64.length <= maxSizeBytes) break;
+      if (base64.length <= maxBase64Length) break;
     }
   }
 
-  if (base64.length > maxSizeBytes) {
+  if (base64.length > maxBase64Length) {
     throw new Error("Image is too large even after compression. Try a smaller image.");
   }
 
@@ -190,16 +180,9 @@ function fileToBase64(file: File): Promise<string> {
 
 /**
  * Process a File into an Attachment ready for sending.
- * Validates, resizes, and compresses the image.
+ * Validates via magic bytes, resizes, and compresses the image.
  */
 export async function processImageFile(file: File): Promise<Attachment> {
-  const isValid = await validateImageType(file);
-  if (!isValid) {
-    throw new Error(
-      `"${file.name}" is not a supported image type. Supported: PNG, JPEG, GIF, WebP.`
-    );
-  }
-
   const { base64, mimeType } = await resizeAndCompress(file);
 
   return {

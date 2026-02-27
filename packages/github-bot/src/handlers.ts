@@ -8,12 +8,47 @@ import type {
 import type { Logger } from "./logger";
 import { generateInstallationToken, postReaction, checkSenderPermission } from "./github-auth";
 import { buildCodeReviewPrompt, buildCommentActionPrompt } from "./prompts";
-import { generateInternalToken } from "@open-inspect/shared";
+import { generateInternalToken, type Attachment } from "@open-inspect/shared";
 import { getGitHubConfig, type ResolvedGitHubConfig } from "./utils/integration-config";
 
 export type HandlerResult =
   | { outcome: "processed"; session_id: string; message_id: string; handler_action: string }
   | { outcome: "skipped"; skip_reason: string };
+
+const ALLOWED_IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_IMAGE_FETCH_BYTES = 800_000;
+const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\(([^)]+)\)/;
+
+/**
+ * Extract the first image from markdown content, fetch it, and return as an Attachment.
+ */
+async function extractMarkdownImageAttachment(markdown: string): Promise<Attachment | null> {
+  const match = MARKDOWN_IMAGE_RE.exec(markdown);
+  if (!match) return null;
+
+  const url = match[1];
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+
+    const contentType = resp.headers.get("content-type")?.split(";")[0] || "";
+    if (!ALLOWED_IMAGE_MIMES.has(contentType)) return null;
+
+    const buffer = await resp.arrayBuffer();
+    if (buffer.byteLength > MAX_IMAGE_FETCH_BYTES) return null;
+
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    const ext = contentType.split("/")[1] || "png";
+    return {
+      type: "image",
+      name: `github-image.${ext}`,
+      content: base64,
+      mimeType: contentType,
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function getAuthHeaders(env: Env, traceId: string): Promise<Record<string, string>> {
   const token = await generateInternalToken(env.INTERNAL_CALLBACK_SECRET);
@@ -61,7 +96,7 @@ async function sendPrompt(
   controlPlane: Fetcher,
   headers: Record<string, string>,
   sessionId: string,
-  params: { content: string; authorId: string }
+  params: { content: string; authorId: string; attachments?: Attachment[] }
 ): Promise<string> {
   const response = await controlPlane.fetch(`https://internal/sessions/${sessionId}/prompt`, {
     method: "POST",
@@ -222,9 +257,11 @@ export async function handleReviewRequested(
     codeReviewInstructions: config.codeReviewInstructions,
   });
 
+  const imageAtt = pr.body ? await extractMarkdownImageAttachment(pr.body) : null;
   const messageId = await sendPrompt(env.CONTROL_PLANE, headers, sessionId, {
     content: prompt,
     authorId: `github:${payload.sender.login}`,
+    ...(imageAtt ? { attachments: [imageAtt] } : {}),
   });
   log.info("prompt.sent", {
     ...meta,
@@ -318,9 +355,11 @@ export async function handlePullRequestOpened(
     codeReviewInstructions: config.codeReviewInstructions,
   });
 
+  const prImageAtt = pr.body ? await extractMarkdownImageAttachment(pr.body) : null;
   const messageId = await sendPrompt(env.CONTROL_PLANE, headers, sessionId, {
     content: prompt,
     authorId: `github:${sender.login}`,
+    ...(prImageAtt ? { attachments: [prImageAtt] } : {}),
   });
   log.info("prompt.sent", {
     ...meta,
@@ -418,9 +457,11 @@ export async function handleIssueComment(
     commentActionInstructions: config.commentActionInstructions,
   });
 
+  const commentImageAtt = await extractMarkdownImageAttachment(comment.body);
   const messageId = await sendPrompt(env.CONTROL_PLANE, headers, sessionId, {
     content: prompt,
     authorId: `github:${sender.login}`,
+    ...(commentImageAtt ? { attachments: [commentImageAtt] } : {}),
   });
   log.info("prompt.sent", {
     ...meta,
@@ -518,9 +559,11 @@ export async function handleReviewComment(
     commentActionInstructions: config.commentActionInstructions,
   });
 
+  const reviewCommentImageAtt = await extractMarkdownImageAttachment(comment.body);
   const messageId = await sendPrompt(env.CONTROL_PLANE, headers, sessionId, {
     content: prompt,
     authorId: `github:${sender.login}`,
+    ...(reviewCommentImageAtt ? { attachments: [reviewCommentImageAtt] } : {}),
   });
   log.info("prompt.sent", {
     ...meta,
