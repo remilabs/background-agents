@@ -37,6 +37,7 @@ import { reposRoutes } from "./routes/repos";
 import { repoImageRoutes } from "./routes/repo-images";
 import { secretsRoutes } from "./routes/secrets";
 import { z, ZodError } from "zod";
+import { AttachmentsFieldSchema } from "./session/schemas";
 
 const logger = createLogger("router");
 
@@ -81,17 +82,7 @@ const PromptSchema = z.object({
   source: z.string().optional(),
   model: z.string().optional(),
   reasoningEffort: z.string().optional(),
-  attachments: z
-    .array(
-      z.object({
-        type: z.enum(["file", "image", "url"]),
-        name: z.string(),
-        url: z.string().optional(),
-        content: z.string().optional(),
-        mimeType: z.string().optional(),
-      })
-    )
-    .optional(),
+  attachments: AttachmentsFieldSchema,
   // Validates against SlackCallbackContext | LinearCallbackContext from @open-inspect/shared
   callbackContext: z
     .union([

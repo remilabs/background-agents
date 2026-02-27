@@ -15,8 +15,8 @@ export const MAX_IMAGE_DIMENSION = 1568;
 /** Max base64 size per attachment (~560 KB binary). */
 export const MAX_ATTACHMENT_SIZE_BYTES = 768 * 1024;
 
-/** Max attachments per message. */
-export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+/** Max attachments per message (1 to fit under Cloudflare Workers 1 MB WS frame limit). */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 1;
 
 /** Allowed MIME types for image uploads. */
 export const ALLOWED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

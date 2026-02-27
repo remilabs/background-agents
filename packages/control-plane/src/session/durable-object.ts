@@ -8,9 +8,10 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { timingSafeEqual } from "@open-inspect/shared";
+import { timingSafeEqual, type Attachment } from "@open-inspect/shared";
 import { z } from "zod";
 import { initSchema } from "./schema";
+import { AttachmentsFieldSchema } from "./schemas";
 import { generateId, hashToken } from "../auth/crypto";
 import { getGitHubAppConfig } from "../auth/github-app";
 import { createModalClient } from "../sandbox/client";
@@ -118,17 +119,7 @@ const ClientMessageSchema = z.discriminatedUnion("type", [
     model: z.string().optional(),
     reasoningEffort: z.string().optional(),
     requestId: z.string().optional(),
-    attachments: z
-      .array(
-        z.object({
-          type: z.enum(["file", "image", "url"]),
-          name: z.string(),
-          url: z.string().optional(),
-          content: z.string().optional(),
-          mimeType: z.string().optional(),
-        })
-      )
-      .optional(),
+    attachments: AttachmentsFieldSchema,
   }),
   z.object({ type: z.literal("stop") }),
   z.object({ type: z.literal("typing") }),
@@ -175,17 +166,7 @@ const EnqueuePromptSchema = z.object({
   source: z.string(),
   model: z.string().optional(),
   reasoningEffort: z.string().optional(),
-  attachments: z
-    .array(
-      z.object({
-        type: z.enum(["file", "image", "url"]),
-        name: z.string(),
-        url: z.string().optional(),
-        content: z.string().optional(),
-        mimeType: z.string().optional(),
-      })
-    )
-    .optional(),
+  attachments: AttachmentsFieldSchema,
   callbackContext: z.record(z.unknown()).optional(),
 });
 
@@ -1321,13 +1302,7 @@ export class SessionDO extends DurableObject<Env> {
       model?: string;
       reasoningEffort?: string;
       requestId?: string;
-      attachments?: Array<{
-        type: "file" | "image" | "url";
-        name: string;
-        url?: string;
-        content?: string;
-        mimeType?: string;
-      }>;
+      attachments?: Attachment[];
     }
   ): Promise<void> {
     await this.messageQueue.handlePromptMessage(ws, data);
