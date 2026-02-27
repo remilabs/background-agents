@@ -437,38 +437,81 @@ class AgentBridge:
             self.log.debug("bridge.unknown_command", cmd_type=cmd_type)
         return None
 
+    # Server-side attachment limits
+    MAX_ATTACHMENTS = 1
+    MAX_IMAGE_BYTES = 800_000  # ~800 KB decoded limit
+    ALLOWED_MIME_TYPES: ClassVar[set[str]] = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
     async def _write_attachments_to_sandbox(
         self,
         message_id: str,
         attachments: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Write image attachments to sandbox filesystem and return image parts for OpenCode."""
+        import base64
+
         image_parts: list[dict[str, Any]] = []
         upload_dir = Path("/workspace/.uploads") / message_id
         upload_dir.mkdir(parents=True, exist_ok=True)
 
-        for att in attachments:
+        for att in attachments[: self.MAX_ATTACHMENTS]:
             if att.get("type") != "image":
                 continue
 
             content_b64 = att.get("content")
             mime_type = att.get("mimeType", "image/png")
-            name = att.get("name", "image.png")
+            raw_name = att.get("name", "image.png")
 
             if not content_b64:
                 continue
 
-            try:
-                import base64
+            # Validate MIME type against allowlist
+            if mime_type not in self.ALLOWED_MIME_TYPES:
+                self.log.warning(
+                    "attachment.rejected_mime",
+                    message_id=message_id,
+                    filename=raw_name,
+                    mime_type=mime_type,
+                )
+                continue
 
+            # Sanitize filename: strip directory components to prevent path traversal
+            safe_name = Path(raw_name).name
+            if not safe_name:
+                safe_name = "image.png"
+
+            try:
                 image_bytes = base64.b64decode(content_b64)
-                file_path = upload_dir / name
+
+                # Enforce decoded size limit
+                if len(image_bytes) > self.MAX_IMAGE_BYTES:
+                    self.log.warning(
+                        "attachment.rejected_size",
+                        message_id=message_id,
+                        filename=safe_name,
+                        size_bytes=len(image_bytes),
+                        max_bytes=self.MAX_IMAGE_BYTES,
+                    )
+                    continue
+
+                file_path = upload_dir / safe_name
+
+                # Defense-in-depth: ensure resolved path stays under upload_dir
+                if not file_path.resolve().is_relative_to(upload_dir.resolve()):
+                    self.log.warning(
+                        "attachment.path_traversal_blocked",
+                        message_id=message_id,
+                        filename=raw_name,
+                        resolved=str(file_path.resolve()),
+                    )
+                    continue
+
                 file_path.write_bytes(image_bytes)
 
                 self.log.info(
                     "attachment.written",
                     message_id=message_id,
-                    filename=name,
+                    filename=safe_name,
                     size_bytes=len(image_bytes),
                     path=str(file_path),
                 )
@@ -485,7 +528,7 @@ class AgentBridge:
                 self.log.error(
                     "attachment.write_error",
                     message_id=message_id,
-                    filename=name,
+                    filename=safe_name,
                     exc=e,
                 )
 
