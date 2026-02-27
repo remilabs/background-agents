@@ -54,6 +54,11 @@ import {
   ALLOWED_MIME_TYPES,
 } from "@/lib/image-utils";
 
+/** Return the MIME type only if it's in the allowlist; default to image/png. */
+function safeMimeType(mime: string | undefined): string {
+  return mime && ALLOWED_MIME_TYPES.has(mime) ? mime : "image/png";
+}
+
 // Event grouping types
 type EventGroup =
   | { type: "tool_group"; events: ToolCallEvent[]; id: string }
@@ -1159,7 +1164,7 @@ function SessionContent({
                 {pendingAttachments.map((att, i) => (
                   <div key={i} className="relative group/thumb">
                     <img
-                      src={`data:${att.mimeType};base64,${att.content}`}
+                      src={`data:${safeMimeType(att.mimeType)};base64,${att.content}`}
                       alt={att.name}
                       className="w-16 h-16 object-cover rounded border border-border"
                     />
@@ -1602,14 +1607,20 @@ const EventItem = memo(function EventItem({
           <pre className="whitespace-pre-wrap text-sm text-foreground">{messageContent}</pre>
           {event.attachments && event.attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {event.attachments.map((att, i) => (
-                <img
-                  key={i}
-                  src={att.content ? `data:${att.mimeType};base64,${att.content}` : att.url || ""}
-                  alt={att.name}
-                  className="max-w-xs max-h-48 rounded border border-border object-contain"
-                />
-              ))}
+              {event.attachments.map((att, i) =>
+                att.content ? (
+                  <img
+                    key={i}
+                    src={`data:${safeMimeType(att.mimeType)};base64,${att.content}`}
+                    alt={att.name}
+                    className="max-w-xs max-h-48 rounded border border-border object-contain"
+                  />
+                ) : (
+                  <span key={i} className="text-xs text-muted-foreground">
+                    {att.name}
+                  </span>
+                )
+              )}
             </div>
           )}
         </div>
