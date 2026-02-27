@@ -518,10 +518,8 @@ export function useSessionSocket(sessionId: string): UseSessionSocketReturn {
       }
 
       if (!subscribedRef.current) {
-        console.error("Not subscribed yet, waiting...");
-        // Retry after a short delay
-        setTimeout(() => sendPrompt(content, model, reasoningEffort, requestId, attachments), 500);
-        return "local_enqueued";
+        console.error("WebSocket not subscribed yet");
+        return "rejected";
       }
 
       console.log("Sending prompt", {

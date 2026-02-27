@@ -317,14 +317,21 @@ export class SessionMessageQueue {
       },
       ...(attachments?.length ? { attachments } : {}),
     };
+    // Strip base64 content from event storage/replay to avoid multi-MB payloads
+    // on reconnect. Full content is preserved in the messages table for sandbox use.
+    const eventAttachments = attachments?.map(({ content: _content, ...meta }) => meta);
+    const storableEvent: SandboxEvent = {
+      ...userMessageEvent,
+      ...(eventAttachments?.length ? { attachments: eventAttachments } : {}),
+    };
     this.deps.repository.createEvent({
       id: generateId(),
       type: "user_message",
-      data: JSON.stringify(userMessageEvent),
+      data: JSON.stringify(storableEvent),
       messageId,
       createdAt: now,
     });
-    this.deps.broadcast({ type: "sandbox_event", event: userMessageEvent });
+    this.deps.broadcast({ type: "sandbox_event", event: storableEvent });
   }
 
   async enqueuePromptFromApi(data: {
