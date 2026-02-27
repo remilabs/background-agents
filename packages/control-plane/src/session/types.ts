@@ -12,6 +12,7 @@ import type {
   ArtifactType,
   EventType,
 } from "../types";
+import type { Attachment } from "@open-inspect/shared";
 
 // Database row types (match SQLite schema)
 
@@ -111,12 +112,7 @@ export interface PromptCommand {
     githubName: string | null;
     githubEmail: string | null;
   };
-  attachments?: Array<{
-    type: string;
-    name: string;
-    url?: string;
-    content?: string;
-  }>;
+  attachments?: Attachment[];
 }
 
 export interface StopCommand {

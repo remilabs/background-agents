@@ -19,7 +19,7 @@ import {
 import { createClassifier } from "./classifier";
 import { getAvailableRepos } from "./classifier/repos";
 import { callbacksRouter } from "./callbacks";
-import { generateInternalToken } from "@open-inspect/shared";
+import { generateInternalToken, type Attachment } from "@open-inspect/shared";
 import { createLogger } from "./logger";
 import {
   MODEL_OPTIONS,
@@ -117,6 +117,41 @@ async function createSession(
   }
 }
 
+const ALLOWED_IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_IMAGE_FETCH_BYTES = 800_000;
+
+/**
+ * Download a Slack file and convert it to an Attachment.
+ * Returns null if the file is too large, not an image, or fetch fails.
+ */
+async function fetchSlackFileAsAttachment(
+  file: { name: string; mimetype: string; url_private: string; size: number },
+  botToken: string
+): Promise<Attachment | null> {
+  if (!ALLOWED_IMAGE_MIMES.has(file.mimetype)) return null;
+  if (file.size > MAX_IMAGE_FETCH_BYTES) return null;
+
+  try {
+    const resp = await fetch(file.url_private, {
+      headers: { Authorization: `Bearer ${botToken}` },
+    });
+    if (!resp.ok) return null;
+
+    const buffer = await resp.arrayBuffer();
+    if (buffer.byteLength > MAX_IMAGE_FETCH_BYTES) return null;
+
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+    return {
+      type: "image",
+      name: file.name,
+      content: base64,
+      mimeType: file.mimetype,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Send a prompt to a session via the control plane.
  */
@@ -126,7 +161,8 @@ async function sendPrompt(
   content: string,
   authorId: string,
   callbackContext?: CallbackContext,
-  traceId?: string
+  traceId?: string,
+  attachments?: Attachment[]
 ): Promise<{ messageId: string } | null> {
   const startTime = Date.now();
   const base = { trace_id: traceId, session_id: sessionId, source: "slack" };
@@ -142,6 +178,7 @@ async function sendPrompt(
           authorId,
           source: "slack",
           callbackContext,
+          ...(attachments?.length ? { attachments } : {}),
         }),
       }
     );
@@ -543,7 +580,8 @@ async function startSessionAndSendPrompt(
   previousMessages?: string[],
   channelName?: string,
   channelDescription?: string,
-  traceId?: string
+  traceId?: string,
+  attachments?: Attachment[]
 ): Promise<{ sessionId: string } | null> {
   // Fetch user's preferred model and reasoning effort
   const userPrefs = await getUserPreferences(env, userId);
@@ -603,7 +641,8 @@ async function startSessionAndSendPrompt(
     promptContent,
     `slack:${userId}`,
     callbackContext,
-    traceId
+    traceId,
+    attachments
   );
 
   if (!promptResult) {
@@ -786,6 +825,13 @@ async function handleSlackEvent(
       thread_ts?: string;
       bot_id?: string;
       tab?: string;
+      files?: Array<{
+        id: string;
+        name: string;
+        mimetype: string;
+        url_private: string;
+        size: number;
+      }>;
     };
   },
   env: Env,
@@ -825,16 +871,33 @@ async function handleAppMention(
     channel: string;
     ts: string;
     thread_ts?: string;
+    files?: Array<{
+      id: string;
+      name: string;
+      mimetype: string;
+      url_private: string;
+      size: number;
+    }>;
   },
   env: Env,
   traceId?: string
 ): Promise<void> {
-  const { text, channel, ts, thread_ts } = event;
+  const { text, channel, ts, thread_ts, files } = event;
 
   // Remove the bot mention from the text
   const messageText = text.replace(/<@[A-Z0-9]+>/g, "").trim();
 
-  if (!messageText) {
+  // Extract first image attachment from Slack files (best-effort)
+  let imageAttachments: Attachment[] | undefined;
+  if (files?.length) {
+    const first = files.find((f) => ALLOWED_IMAGE_MIMES.has(f.mimetype));
+    if (first) {
+      const att = await fetchSlackFileAsAttachment(first, env.SLACK_BOT_TOKEN);
+      if (att) imageAttachments = [att];
+    }
+  }
+
+  if (!messageText && !imageAttachments?.length) {
     await postMessage(
       env.SLACK_BOT_TOKEN,
       channel,
@@ -900,7 +963,8 @@ async function handleAppMention(
         promptContent,
         `slack:${event.user}`,
         callbackContext,
-        traceId
+        traceId,
+        imageAttachments
       );
 
       if (promptResult) {
@@ -1055,7 +1119,8 @@ async function handleAppMention(
     previousMessages,
     channelName,
     channelDescription,
-    traceId
+    traceId,
+    imageAttachments
   );
 
   if (!sessionResult) {

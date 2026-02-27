@@ -45,8 +45,20 @@ import {
 } from "@open-inspect/shared";
 import { useEnabledModels } from "@/hooks/use-enabled-models";
 import { ReasoningEffortPills } from "@/components/reasoning-effort-pills";
-import type { SandboxEvent } from "@open-inspect/shared";
+import type { SandboxEvent, Attachment } from "@open-inspect/shared";
 import type { ToolCallEvent } from "@/lib/tool-formatters";
+import { useAttachments } from "@/hooks/use-attachments";
+import { AttachmentPreviewStrip } from "@/components/attachment-preview-strip";
+import {
+  generatePastedImageName,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  ALLOWED_MIME_TYPES,
+} from "@/lib/image-utils";
+
+/** Return the MIME type only if it's in the allowlist; default to image/png. */
+function safeMimeType(mime: string | undefined): string {
+  return mime && ALLOWED_MIME_TYPES.has(mime) ? mime : "image/png";
+}
 
 // Event grouping types
 type EventGroup =
@@ -210,6 +222,14 @@ function SessionPageContent() {
   const pendingDraftClearRef = useRef<{ requestId: string; submittedText: string } | null>(null);
   const autocompleteRequestVersionRef = useRef(0);
   const [isAwaitingPromptAck, setIsAwaitingPromptAck] = useState(false);
+  const {
+    pendingAttachments,
+    attachmentError,
+    fileInputRef,
+    addAttachments,
+    removeAttachment,
+    clearAttachments,
+  } = useAttachments();
   const [slashMenuState, setSlashMenuState] = useState<ComposerAutocompleteState>("closed");
   const [slashOptions, setSlashOptions] = useState<ComposerCommand[]>([]);
   const [activeSlashIndex, setActiveSlashIndex] = useState(0);
@@ -361,15 +381,26 @@ function SessionPageContent() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim() || isProcessing || isAwaitingPromptAck) return;
+    if ((!prompt.trim() && pendingAttachments.length === 0) || isProcessing || isAwaitingPromptAck)
+      return;
 
     const requestId = crypto.randomUUID();
-    const sendOutcome = sendPrompt(prompt, selectedModel, reasoningEffort, requestId);
+    const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
+    const sendOutcome = sendPrompt(
+      prompt || "(image)",
+      selectedModel,
+      reasoningEffort,
+      requestId,
+      attachments
+    );
 
     if (sendOutcome === "rejected") {
       setIsAwaitingPromptAck(false);
       return;
     }
+
+    // Clear attachments immediately on send (they're included in the WS message)
+    clearAttachments();
 
     pendingDraftClearRef.current = {
       requestId,
@@ -497,6 +528,11 @@ function SessionPageContent() {
       modelDropdownOpen={modelDropdownOpen}
       modelDropdownRef={modelDropdownRef}
       inputRef={inputRef}
+      pendingAttachments={pendingAttachments}
+      attachmentError={attachmentError}
+      fileInputRef={fileInputRef}
+      addAttachments={addAttachments}
+      removeAttachment={removeAttachment}
       handleSubmit={handleSubmit}
       handleInputChange={handleInputChange}
       handleKeyDown={handleKeyDown}
@@ -543,6 +579,11 @@ function SessionContent({
   modelDropdownOpen,
   modelDropdownRef,
   inputRef,
+  pendingAttachments,
+  attachmentError,
+  fileInputRef,
+  addAttachments,
+  removeAttachment,
   handleSubmit,
   handleInputChange,
   handleKeyDown,
@@ -585,6 +626,11 @@ function SessionContent({
   modelDropdownOpen: boolean;
   modelDropdownRef: React.RefObject<HTMLDivElement | null>;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  pendingAttachments: Attachment[];
+  attachmentError: string | null;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  addAttachments: (files: File[]) => Promise<void>;
+  removeAttachment: (index: number) => void;
   handleSubmit: (e: React.FormEvent) => void;
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   handleKeyDown: (e: React.KeyboardEvent) => void;
@@ -1044,7 +1090,36 @@ function SessionContent({
 
       {/* Input */}
       <footer className="border-t border-border-muted flex-shrink-0">
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto p-4 pb-6">
+        <form
+          onSubmit={handleSubmit}
+          className="max-w-4xl mx-auto p-4 pb-6"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const files = Array.from(e.dataTransfer.files).filter((f) =>
+              ALLOWED_MIME_TYPES.has(f.type)
+            );
+            if (files.length > 0) addAttachments(files);
+          }}
+        >
+          {/* Hidden file input for image picker */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              if (files.length > 0) addAttachments(files);
+              e.target.value = ""; // Reset so same file can be re-selected
+            }}
+          />
+
           {/* Action bar above input */}
           <div className="mb-3">
             <ActionBar
@@ -1058,6 +1133,12 @@ function SessionContent({
 
           {/* Input container */}
           <div className="border border-border bg-input">
+            <AttachmentPreviewStrip
+              attachments={pendingAttachments}
+              error={attachmentError}
+              onRemove={removeAttachment}
+            />
+
             {/* Text input area with floating send button */}
             <div className="relative">
               <textarea
@@ -1066,6 +1147,27 @@ function SessionContent({
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 onBlur={closeSlashMenu}
+                onPaste={(e) => {
+                  const items = Array.from(e.clipboardData.items);
+                  const imageItems = items.filter(
+                    (item) => item.kind === "file" && ALLOWED_MIME_TYPES.has(item.type)
+                  );
+                  if (imageItems.length > 0) {
+                    e.preventDefault();
+                    const files = imageItems
+                      .map((item) => item.getAsFile())
+                      .filter((f): f is File => f !== null)
+                      .map((f) => {
+                        // Pasted files have no name, generate one
+                        if (!f.name || f.name === "image.png") {
+                          const name = generatePastedImageName(f.type);
+                          return new File([f], name, { type: f.type });
+                        }
+                        return f;
+                      });
+                    addAttachments(files);
+                  }
+                }}
                 placeholder={isProcessing ? "Type your next message..." : "Ask or build anything"}
                 className="w-full resize-none bg-transparent px-4 pt-4 pb-12 focus:outline-none text-foreground placeholder:text-secondary-foreground"
                 rows={3}
@@ -1109,7 +1211,11 @@ function SessionContent({
                 )}
                 <button
                   type="submit"
-                  disabled={!prompt.trim() || isProcessing || isAwaitingPromptAck}
+                  disabled={
+                    (!prompt.trim() && pendingAttachments.length === 0) ||
+                    isProcessing ||
+                    isAwaitingPromptAck
+                  }
                   className="p-2 text-secondary-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition"
                   title={
                     isAwaitingPromptAck
@@ -1138,10 +1244,30 @@ function SessionContent({
               </div>
             </div>
 
-            {/* Footer row with model selector, reasoning pills, and agent label */}
+            {/* Footer row with upload, model selector, reasoning pills, and agent label */}
             <div className="flex flex-col gap-2 px-4 py-2 border-t border-border-muted sm:flex-row sm:items-center sm:justify-between sm:gap-0">
-              {/* Left side - Model selector + Reasoning pills */}
+              {/* Left side - Upload + Model selector + Reasoning pills */}
               <div className="flex flex-wrap items-center gap-2 sm:gap-4 min-w-0">
+                {/* Image upload button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={
+                    isProcessing || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE
+                  }
+                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  title="Attach image"
+                  aria-label="Attach image"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                    />
+                  </svg>
+                </button>
                 <div className="relative min-w-0" ref={modelDropdownRef}>
                   <button
                     type="button"
@@ -1420,6 +1546,24 @@ const EventItem = memo(function EventItem({
             </div>
           </div>
           <pre className="whitespace-pre-wrap text-sm text-foreground">{messageContent}</pre>
+          {event.attachments && event.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {event.attachments.map((att, i) =>
+                att.content ? (
+                  <img
+                    key={i}
+                    src={`data:${safeMimeType(att.mimeType)};base64,${att.content}`}
+                    alt={att.name}
+                    className="max-w-xs max-h-48 rounded border border-border object-contain"
+                  />
+                ) : (
+                  <span key={i} className="text-xs text-muted-foreground">
+                    {att.name}
+                  </span>
+                )
+              )}
+            </div>
+          )}
         </div>
       );
     }

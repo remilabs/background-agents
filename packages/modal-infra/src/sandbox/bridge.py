@@ -437,6 +437,103 @@ class AgentBridge:
             self.log.debug("bridge.unknown_command", cmd_type=cmd_type)
         return None
 
+    # Server-side attachment limits
+    MAX_ATTACHMENTS = 1
+    MAX_IMAGE_BYTES = 800_000  # ~800 KB decoded limit
+    ALLOWED_MIME_TYPES: ClassVar[set[str]] = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+
+    async def _write_attachments_to_sandbox(
+        self,
+        message_id: str,
+        attachments: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Write image attachments to sandbox filesystem and return image parts for OpenCode."""
+        import base64
+
+        image_parts: list[dict[str, Any]] = []
+        upload_dir = Path("/workspace/.uploads") / message_id
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        for att in attachments[: self.MAX_ATTACHMENTS]:
+            if att.get("type") != "image":
+                continue
+
+            content_b64 = att.get("content")
+            mime_type = att.get("mimeType", "image/png")
+            raw_name = att.get("name", "image.png")
+
+            if not content_b64:
+                continue
+
+            # Validate MIME type against allowlist
+            if mime_type not in self.ALLOWED_MIME_TYPES:
+                self.log.warning(
+                    "attachment.rejected_mime",
+                    message_id=message_id,
+                    filename=raw_name,
+                    mime_type=mime_type,
+                )
+                continue
+
+            # Sanitize filename: strip directory components to prevent path traversal
+            safe_name = Path(raw_name).name
+            if not safe_name:
+                safe_name = "image.png"
+
+            try:
+                image_bytes = base64.b64decode(content_b64)
+
+                # Enforce decoded size limit
+                if len(image_bytes) > self.MAX_IMAGE_BYTES:
+                    self.log.warning(
+                        "attachment.rejected_size",
+                        message_id=message_id,
+                        filename=safe_name,
+                        size_bytes=len(image_bytes),
+                        max_bytes=self.MAX_IMAGE_BYTES,
+                    )
+                    continue
+
+                file_path = upload_dir / safe_name
+
+                # Defense-in-depth: ensure resolved path stays under upload_dir
+                if not file_path.resolve().is_relative_to(upload_dir.resolve()):
+                    self.log.warning(
+                        "attachment.path_traversal_blocked",
+                        message_id=message_id,
+                        filename=raw_name,
+                        resolved=str(file_path.resolve()),
+                    )
+                    continue
+
+                file_path.write_bytes(image_bytes)
+
+                self.log.info(
+                    "attachment.written",
+                    message_id=message_id,
+                    filename=safe_name,
+                    size_bytes=len(image_bytes),
+                    path=str(file_path),
+                )
+
+                # Build OpenCode image part
+                image_parts.append(
+                    {
+                        "type": "image",
+                        "image": content_b64,
+                        "mimeType": mime_type,
+                    }
+                )
+            except Exception as e:
+                self.log.error(
+                    "attachment.write_error",
+                    message_id=message_id,
+                    filename=safe_name,
+                    exc=e,
+                )
+
+        return image_parts
+
     async def _handle_prompt(self, cmd: dict[str, Any]) -> None:
         """Handle prompt command - send to OpenCode and stream response."""
         message_id = cmd.get("messageId") or cmd.get("message_id", "unknown")
@@ -444,6 +541,7 @@ class AgentBridge:
         model = cmd.get("model")
         reasoning_effort = cmd.get("reasoningEffort")
         author_data = cmd.get("author", {})
+        attachments = cmd.get("attachments") or []
         start_time = time.time()
         outcome = "success"
 
@@ -452,6 +550,7 @@ class AgentBridge:
             message_id=message_id,
             model=model,
             reasoning_effort=reasoning_effort,
+            attachments_count=len(attachments),
         )
 
         github_name = author_data.get("githubName")
@@ -464,6 +563,11 @@ class AgentBridge:
                 )
             )
 
+        # Write image attachments to sandbox filesystem and build image parts
+        image_parts: list[dict[str, Any]] = []
+        if attachments:
+            image_parts = await self._write_attachments_to_sandbox(message_id, attachments)
+
         if not self.opencode_session_id:
             await self._create_opencode_session()
 
@@ -471,7 +575,7 @@ class AgentBridge:
             had_error = False
             error_message = None
             async for event in self._stream_opencode_response_sse(
-                message_id, content, model, reasoning_effort
+                message_id, content, model, reasoning_effort, image_parts=image_parts
             ):
                 if event.get("type") == "error":
                     had_error = True
@@ -502,6 +606,13 @@ class AgentBridge:
                 }
             )
         finally:
+            # Clean up upload directory (images already sent inline to OpenCode)
+            if attachments:
+                import shutil
+
+                upload_dir = Path("/workspace/.uploads") / message_id
+                shutil.rmtree(upload_dir, ignore_errors=True)
+
             duration_ms = int((time.time() - start_time) * 1000)
             self.log.info(
                 "prompt.run",
@@ -618,6 +729,7 @@ class AgentBridge:
         model: str | None,
         opencode_message_id: str | None = None,
         reasoning_effort: str | None = None,
+        image_parts: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build request body for OpenCode prompt requests.
 
@@ -628,8 +740,12 @@ class AgentBridge:
                                  When provided, OpenCode uses this as the user message ID,
                                  and assistant responses will have parentID pointing to it.
             reasoning_effort: Optional reasoning effort level (e.g., "high", "max")
+            image_parts: Optional list of image content parts to include alongside text
         """
-        request_body: dict[str, Any] = {"parts": [{"type": "text", "text": content}]}
+        parts: list[dict[str, Any]] = [{"type": "text", "text": content}]
+        if image_parts:
+            parts.extend(image_parts)
+        request_body: dict[str, Any] = {"parts": parts}
 
         if opencode_message_id:
             request_body["messageID"] = opencode_message_id
@@ -720,6 +836,7 @@ class AgentBridge:
         content: str,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        image_parts: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream response from OpenCode using Server-Sent Events.
 
@@ -740,7 +857,7 @@ class AgentBridge:
 
         opencode_message_id = OpenCodeIdentifier.ascending("message")
         request_body = self._build_prompt_request_body(
-            content, model, opencode_message_id, reasoning_effort
+            content, model, opencode_message_id, reasoning_effort, image_parts=image_parts
         )
 
         sse_url = f"{self.opencode_base_url}/event"
