@@ -565,6 +565,8 @@ function SessionPageContent() {
       handleSlashOptionHover={setActiveSlashIndex}
       handleSlashOptionSelect={insertSlashCommand}
       closeSlashMenu={closeSlashMenu}
+      imageUploadModelError={imageUploadModelErrorState[0]}
+      setImageUploadModelError={setImageUploadModelError}
       setModelDropdownOpen={setModelDropdownOpen}
       setSelectedModel={handleModelChange}
       setReasoningEffort={setReasoningEffort}
@@ -616,6 +618,8 @@ function SessionContent({
   handleSlashOptionHover,
   handleSlashOptionSelect,
   closeSlashMenu,
+  imageUploadModelError,
+  setImageUploadModelError,
   setModelDropdownOpen,
   setSelectedModel,
   setReasoningEffort,
@@ -663,6 +667,8 @@ function SessionContent({
   handleSlashOptionHover: (index: number) => void;
   handleSlashOptionSelect: (command: ComposerCommand) => void;
   closeSlashMenu: () => void;
+  imageUploadModelError: string | null;
+  setImageUploadModelError: (value: string | null) => void;
   setModelDropdownOpen: (open: boolean) => void;
   setSelectedModel: (model: string) => void;
   setReasoningEffort: (value: string | undefined) => void;
@@ -1176,7 +1182,7 @@ function SessionContent({
           <div className="border border-border bg-input">
             <AttachmentPreviewStrip
               attachments={pendingAttachments}
-              error={imageUploadModelErrorState[0] || attachmentError}
+              error={imageUploadModelError || attachmentError}
               onRemove={removeAttachment}
             />
 
