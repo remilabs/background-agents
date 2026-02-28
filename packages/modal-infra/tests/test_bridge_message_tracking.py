@@ -205,6 +205,29 @@ class TestBuildPromptRequestBody:
             "modelID": "claude-3-opus",
         }
 
+    def test_with_file_attachment_part(self, bridge: AgentBridge):
+        body = bridge._build_prompt_request_body(
+            "Hello",
+            attachment_parts=[
+                {
+                    "type": "file",
+                    "mime": "image/png",
+                    "url": "data:image/png;base64,iVBORw0KGgo=",
+                    "filename": "screenshot.png",
+                }
+            ],
+        )
+
+        assert body["parts"] == [
+            {"type": "text", "text": "Hello"},
+            {
+                "type": "file",
+                "mime": "image/png",
+                "url": "data:image/png;base64,iVBORw0KGgo=",
+                "filename": "screenshot.png",
+            },
+        ]
+
     def test_with_anthropic_manual_thinking(self, bridge: AgentBridge):
         """Non-Opus-4.6 Claude models should use manual thinking budgets."""
         body = bridge._build_prompt_request_body(

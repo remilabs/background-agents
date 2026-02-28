@@ -61,6 +61,24 @@ export const MODEL_REASONING_CONFIG: Partial<Record<ValidModel, ModelReasoningCo
   "openai/gpt-5.3-codex-spark": { efforts: ["low", "medium", "high", "xhigh"], default: "high" },
 };
 
+/**
+ * Models that support image attachments.
+ *
+ * If we add a new model here, confirm upstream API/SDK support before enabling.
+ */
+const MODELS_WITH_VISION_SUPPORT: readonly ValidModel[] = [
+  "anthropic/claude-haiku-4-5",
+  "anthropic/claude-sonnet-4-5",
+  "anthropic/claude-sonnet-4-6",
+  "anthropic/claude-opus-4-5",
+  "anthropic/claude-opus-4-6",
+  "openai/gpt-5.2",
+  "openai/gpt-5.2-codex",
+  "openai/gpt-5.3-codex",
+  "openai/gpt-5.3-codex-spark",
+];
+const MODEL_VISION_SUPPORT = new Set<string>(MODELS_WITH_VISION_SUPPORT);
+
 export interface ModelDisplayInfo {
   id: ValidModel;
   name: string;
@@ -182,6 +200,13 @@ export function getReasoningConfig(model: string): ModelReasoningConfig | undefi
   const normalized = normalizeModelId(model);
   if (!isValidModel(normalized)) return undefined;
   return MODEL_REASONING_CONFIG[normalized as ValidModel];
+}
+
+/**
+ * Check if a model supports image inputs.
+ */
+export function supportsVision(model: string): boolean {
+  return MODEL_VISION_SUPPORT.has(normalizeModelId(model));
 }
 
 /**

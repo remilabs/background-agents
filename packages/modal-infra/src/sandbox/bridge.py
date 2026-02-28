@@ -447,10 +447,10 @@ class AgentBridge:
         message_id: str,
         attachments: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Write image attachments to sandbox filesystem and return image parts for OpenCode."""
+        """Write image attachments to sandbox filesystem and return OpenCode file parts."""
         import base64
 
-        image_parts: list[dict[str, Any]] = []
+        attachment_parts: list[dict[str, Any]] = []
         upload_dir = Path("/workspace/.uploads") / message_id
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -516,12 +516,13 @@ class AgentBridge:
                     path=str(file_path),
                 )
 
-                # Build OpenCode image part
-                image_parts.append(
+                # Build OpenCode file part
+                attachment_parts.append(
                     {
-                        "type": "image",
-                        "image": content_b64,
-                        "mimeType": mime_type,
+                        "type": "file",
+                        "mime": mime_type,
+                        "url": f"data:{mime_type};base64,{content_b64}",
+                        "filename": safe_name,
                     }
                 )
             except Exception as e:
@@ -532,7 +533,7 @@ class AgentBridge:
                     exc=e,
                 )
 
-        return image_parts
+        return attachment_parts
 
     async def _handle_prompt(self, cmd: dict[str, Any]) -> None:
         """Handle prompt command - send to OpenCode and stream response."""
@@ -563,10 +564,10 @@ class AgentBridge:
                 )
             )
 
-        # Write image attachments to sandbox filesystem and build image parts
-        image_parts: list[dict[str, Any]] = []
+        # Write image attachments to sandbox filesystem and build OpenCode file parts
+        attachment_parts: list[dict[str, Any]] = []
         if attachments:
-            image_parts = await self._write_attachments_to_sandbox(message_id, attachments)
+            attachment_parts = await self._write_attachments_to_sandbox(message_id, attachments)
 
         if not self.opencode_session_id:
             await self._create_opencode_session()
@@ -575,7 +576,7 @@ class AgentBridge:
             had_error = False
             error_message = None
             async for event in self._stream_opencode_response_sse(
-                message_id, content, model, reasoning_effort, image_parts=image_parts
+                message_id, content, model, reasoning_effort, attachment_parts=attachment_parts
             ):
                 if event.get("type") == "error":
                     had_error = True
@@ -729,7 +730,7 @@ class AgentBridge:
         model: str | None,
         opencode_message_id: str | None = None,
         reasoning_effort: str | None = None,
-        image_parts: list[dict[str, Any]] | None = None,
+        attachment_parts: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build request body for OpenCode prompt requests.
 
@@ -740,11 +741,11 @@ class AgentBridge:
                                  When provided, OpenCode uses this as the user message ID,
                                  and assistant responses will have parentID pointing to it.
             reasoning_effort: Optional reasoning effort level (e.g., "high", "max")
-            image_parts: Optional list of image content parts to include alongside text
+            attachment_parts: Optional list of attachment content parts to include alongside text
         """
         parts: list[dict[str, Any]] = [{"type": "text", "text": content}]
-        if image_parts:
-            parts.extend(image_parts)
+        if attachment_parts:
+            parts.extend(attachment_parts)
         request_body: dict[str, Any] = {"parts": parts}
 
         if opencode_message_id:
@@ -836,7 +837,7 @@ class AgentBridge:
         content: str,
         model: str | None = None,
         reasoning_effort: str | None = None,
-        image_parts: list[dict[str, Any]] | None = None,
+        attachment_parts: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream response from OpenCode using Server-Sent Events.
 
@@ -857,7 +858,11 @@ class AgentBridge:
 
         opencode_message_id = OpenCodeIdentifier.ascending("message")
         request_body = self._build_prompt_request_body(
-            content, model, opencode_message_id, reasoning_effort, image_parts=image_parts
+            content,
+            model,
+            opencode_message_id,
+            reasoning_effort,
+            attachment_parts=attachment_parts,
         )
 
         sse_url = f"{self.opencode_base_url}/event"

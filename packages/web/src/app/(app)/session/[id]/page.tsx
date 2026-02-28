@@ -40,6 +40,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   DEFAULT_MODEL,
   getDefaultReasoningEffort,
+  supportsVision,
   type ModelDisplayInfo,
   type ModelCategory,
 } from "@open-inspect/shared";
@@ -128,6 +129,7 @@ function ModelOptionButton({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const modelSupportsVision = supportsVision(model.id);
   return (
     <button
       type="button"
@@ -137,7 +139,18 @@ function ModelOptionButton({
       }`}
     >
       <div className="flex flex-col items-start">
-        <span className="font-medium">{model.name}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{model.name}</span>
+          <span
+            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${
+              modelSupportsVision
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+            }`}
+          >
+            {modelSupportsVision ? "Vision" : "No images"}
+          </span>
+        </div>
         <span className="text-xs text-secondary-foreground">{model.description}</span>
       </div>
       {isSelected && <CheckIcon />}
@@ -222,6 +235,8 @@ function SessionPageContent() {
   const pendingDraftClearRef = useRef<{ requestId: string; submittedText: string } | null>(null);
   const autocompleteRequestVersionRef = useRef(0);
   const [isAwaitingPromptAck, setIsAwaitingPromptAck] = useState(false);
+  const imageUploadModelErrorState = useState<string | null>(null);
+  const setImageUploadModelError = imageUploadModelErrorState[1];
   const {
     pendingAttachments,
     attachmentError,
@@ -233,7 +248,6 @@ function SessionPageContent() {
   const [slashMenuState, setSlashMenuState] = useState<ComposerAutocompleteState>("closed");
   const [slashOptions, setSlashOptions] = useState<ComposerCommand[]>([]);
   const [activeSlashIndex, setActiveSlashIndex] = useState(0);
-
   const { enabledModels, enabledModelOptions } = useEnabledModels();
 
   const handleModelChange = useCallback((model: string) => {
@@ -327,6 +341,12 @@ function SessionPageContent() {
     }
   }, [enabledModels, selectedModel]);
 
+  useEffect(() => {
+    if (pendingAttachments.length === 0 || supportsVision(selectedModel)) {
+      setImageUploadModelError(null);
+    }
+  }, [pendingAttachments.length, selectedModel, setImageUploadModelError]);
+
   // Sync selectedModel and reasoningEffort with session state when it loads
   useEffect(() => {
     if (sessionState?.model) {
@@ -383,6 +403,12 @@ function SessionPageContent() {
     e.preventDefault();
     if ((!prompt.trim() && pendingAttachments.length === 0) || isProcessing || isAwaitingPromptAck)
       return;
+    if (pendingAttachments.length > 0 && !supportsVision(selectedModel)) {
+      setImageUploadModelError(
+        `The selected model (${selectedModel}) doesn't support image input. Switch to a vision-capable model to send images.`
+      );
+      return;
+    }
 
     const requestId = crypto.randomUUID();
     const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
@@ -1103,6 +1129,13 @@ function SessionContent({
             const files = Array.from(e.dataTransfer.files).filter((f) =>
               ALLOWED_MIME_TYPES.has(f.type)
             );
+            if (files.length > 0 && !supportsVision(selectedModel)) {
+              setImageUploadModelError(
+                `The selected model (${selectedModel}) doesn't support image input. Switch to a vision-capable model to send images.`
+              );
+              return;
+            }
+            setImageUploadModelError(null);
             if (files.length > 0) addAttachments(files);
           }}
         >
@@ -1115,6 +1148,14 @@ function SessionContent({
             className="hidden"
             onChange={(e) => {
               const files = Array.from(e.target.files || []);
+              if (files.length > 0 && !supportsVision(selectedModel)) {
+                setImageUploadModelError(
+                  `The selected model (${selectedModel}) doesn't support image input. Switch to a vision-capable model to send images.`
+                );
+                e.target.value = "";
+                return;
+              }
+              setImageUploadModelError(null);
               if (files.length > 0) addAttachments(files);
               e.target.value = ""; // Reset so same file can be re-selected
             }}
@@ -1135,7 +1176,7 @@ function SessionContent({
           <div className="border border-border bg-input">
             <AttachmentPreviewStrip
               attachments={pendingAttachments}
-              error={attachmentError}
+              error={imageUploadModelErrorState[0] || attachmentError}
               onRemove={removeAttachment}
             />
 
@@ -1154,6 +1195,13 @@ function SessionContent({
                   );
                   if (imageItems.length > 0) {
                     e.preventDefault();
+                    if (!supportsVision(selectedModel)) {
+                      setImageUploadModelError(
+                        `The selected model (${selectedModel}) doesn't support image input. Switch to a vision-capable model to send images.`
+                      );
+                      return;
+                    }
+                    setImageUploadModelError(null);
                     const files = imageItems
                       .map((item) => item.getAsFile())
                       .filter((f): f is File => f !== null)
