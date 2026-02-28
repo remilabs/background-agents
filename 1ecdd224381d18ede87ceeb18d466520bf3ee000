@@ -1,0 +1,75 @@
+packages/web/src/lib/auth.ts
+  de8d1e776728e0e1 44-57,70-77,79,89-93,100,110-115,122,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.6",
+  "base_commit_sha": "1ecdd224381d18ede87ceeb18d466520bf3ee000",
+  "prompts": {
+    "04eff4675b8e0f8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8dbcb61-f9ba-4e4c-b59e-910103009d98",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 830,
+      "overriden_lines": 0
+    },
+    "46b3d3b7fc350c0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc16832f-a5db-468c-830e-d90f0b2b804b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 639,
+      "overriden_lines": 0
+    },
+    "6723bdfafba4fa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0790c9-80e7-4ef0-8528-d0364d1fb0ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 265,
+      "overriden_lines": 0
+    },
+    "de8d1e776728e0e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096b7b7c-6ffc-4436-8cf0-bb3022e17495",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 1,
+      "accepted_lines": 38,
+      "overriden_lines": 0
+    },
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
