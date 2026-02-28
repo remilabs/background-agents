@@ -41,6 +41,20 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ profile, user, account }) {
+      const githubProfile = profile as { login?: string };
+      console.log("[auth:signIn] attempt", {
+        login: githubProfile.login,
+        email: user.email,
+        accountProvider: account?.provider,
+        accountType: account?.type,
+        hasAccessToken: !!account?.access_token,
+        accessTokenPrefix: account?.access_token?.slice(0, 8),
+        hasRefreshToken: !!account?.refresh_token,
+        expiresAt: account?.expires_at,
+        tokenType: account?.token_type,
+        scope: account?.scope,
+      });
+
       const config = {
         allowedDomains: parseAllowlist(process.env.ALLOWED_EMAIL_DOMAINS),
         allowedUsers: parseAllowlist(process.env.ALLOWED_USERS),
@@ -53,15 +67,28 @@ export const authOptions: NextAuthOptions = {
       const hasTeamRestrictions = allowedTeams.length > 0;
       const hasOrgRestrictions = allowedOrgs.length > 0;
 
+      console.log("[auth:signIn] restrictions", {
+        hasUserOrDomainRestrictions,
+        hasTeamRestrictions,
+        hasOrgRestrictions,
+        allowedUsers: config.allowedUsers,
+        allowedOrgs,
+      });
+
       if (!hasUserOrDomainRestrictions && !hasTeamRestrictions && !hasOrgRestrictions) {
+        console.log("[auth:signIn] no restrictions configured, allowing");
         return true;
       }
 
-      const githubProfile = profile as { login?: string };
       if (hasUserOrDomainRestrictions) {
         const isAllowed = checkAccessAllowed(config, {
           githubUsername: githubProfile.login,
           email: user.email ?? undefined,
+        });
+
+        console.log("[auth:signIn] user/domain check", {
+          githubUsername: githubProfile.login,
+          isAllowed,
         });
 
         if (isAllowed) {
@@ -70,6 +97,7 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (!hasTeamRestrictions && !hasOrgRestrictions) {
+        console.log("[auth:signIn] denied: no team/org restrictions to fall back on");
         return false;
       }
 
@@ -79,12 +107,19 @@ export const authOptions: NextAuthOptions = {
           githubAccessToken: account?.access_token,
         });
 
+        console.log("[auth:signIn] org check", {
+          allowedOrgs,
+          isOrgAllowed,
+          hasAccessToken: !!account?.access_token,
+        });
+
         if (isOrgAllowed) {
           return true;
         }
       }
 
       if (!hasTeamRestrictions) {
+        console.log("[auth:signIn] denied: org check failed, no team restrictions");
         return false;
       }
 
@@ -92,6 +127,8 @@ export const authOptions: NextAuthOptions = {
         allowedTeams,
         githubAccessToken: account?.access_token,
       });
+
+      console.log("[auth:signIn] team check", { allowedTeams, isTeamAllowed });
 
       return isTeamAllowed;
     },
