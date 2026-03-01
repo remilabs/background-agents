@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleRequest } from "./router";
-import { generateInternalToken } from "./auth/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { SessionIndexStore } from "./db/session-index";
 
 vi.mock("./db/session-index", () => ({

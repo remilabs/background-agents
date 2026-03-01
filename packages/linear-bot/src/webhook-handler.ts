@@ -17,7 +17,7 @@ import {
   updateAgentSession,
   getRepoSuggestions,
 } from "./utils/linear-client";
-import { generateInternalToken } from "./utils/internal";
+import { generateInternalToken } from "@open-inspect/shared";
 import { classifyRepo } from "./classifier";
 import { getAvailableRepos } from "./classifier/repos";
 import { getLinearConfig } from "./utils/integration-config";

@@ -437,14 +437,6 @@ export interface UserPreferences {
   updatedAt: number;
 }
 
-export interface Logger {
-  debug(msg: string, data?: Record<string, unknown>): void;
-  info(msg: string, data?: Record<string, unknown>): void;
-  warn(msg: string, data?: Record<string, unknown>): void;
-  error(msg: string, data?: Record<string, unknown>): void;
-  child(context: Record<string, unknown>): Logger;
-}
-
 // ─── Callback Context (discriminated union) ──────────────────────────────────
 
 export interface SlackCallbackContext {

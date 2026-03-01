@@ -11,7 +11,7 @@ import { DurableObject } from "cloudflare:workers";
 import { timingSafeEqual } from "@open-inspect/shared";
 import { z } from "zod";
 import { initSchema } from "./schema";
-import { generateId, hashToken, timingSafeEqual } from "../auth/crypto";
+import { generateId, hashToken } from "../auth/crypto";
 import { getGitHubAppConfig } from "../auth/github-app";
 import { createModalClient } from "../sandbox/client";
 import { createModalProvider } from "../sandbox/providers/modal-provider";
@@ -295,14 +295,14 @@ const SandboxEventSchema: z.ZodType<SandboxEvent> = z.discriminatedUnion("type",
     type: z.literal("push_complete"),
     branchName: z.string(),
     sandboxId: z.string().optional(),
-    timestamp: z.number().optional(),
+    timestamp: z.number(),
   }),
   z.object({
     type: z.literal("push_error"),
     branchName: z.string(),
     error: z.string(),
     sandboxId: z.string().optional(),
-    timestamp: z.number().optional(),
+    timestamp: z.number(),
   }),
   z.object({
     type: z.literal("user_message"),

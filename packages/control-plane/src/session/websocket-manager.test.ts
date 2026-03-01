@@ -702,8 +702,8 @@ describe("SessionWebSocketManagerImpl", () => {
         participant_id: "p-1",
         client_id: "c-1",
         user_id: "u-1",
-        github_name: null,
-        github_login: null,
+        scm_name: null,
+        scm_login: null,
       });
 
       // First broadcast: slow path (scan + classify + DB lookup)
@@ -761,10 +761,11 @@ describe("SessionWebSocketManagerImpl", () => {
       const message = { type: "sandbox_status", status: "ready" };
       const originalStringify = JSON.stringify;
       let stringifyCallCount = 0;
-      JSON.stringify = (...args: Parameters<typeof JSON.stringify>) => {
+
+      JSON.stringify = ((...args: any[]) => {
         stringifyCallCount++;
-        return originalStringify(...args);
-      };
+        return originalStringify.apply(JSON, args as [any, any?, any?]);
+      }) as typeof JSON.stringify;
 
       try {
         manager.broadcast("authenticated_only", message);
