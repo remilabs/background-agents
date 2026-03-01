@@ -1,0 +1,31 @@
+packages/control-plane/src/session/durable-object.ts
+  089a35823a0bc8ec 298,305
+packages/control-plane/src/session/websocket-manager.test.ts
+  089a35823a0bc8ec 705-706,764-765,767-768
+packages/linear-bot/src/utils/integration-config.ts
+  089a35823a0bc8ec 2
+packages/linear-bot/src/webhook-handler.ts
+  089a35823a0bc8ec 20
+packages/control-plane/src/router.spawn-child.test.ts
+  089a35823a0bc8ec 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "b3f67cf7e38b300408da1af6f72b63426fb0f474",
+  "prompts": {
+    "089a35823a0bc8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aed7feb5-9537-4e74-a386-b19d86f74d8e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 20,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}
