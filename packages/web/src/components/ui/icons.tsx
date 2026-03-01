@@ -255,7 +255,7 @@ export function GitPrIcon({ className }: IconProps) {
 
 // --- Content & Files ---
 
-export function InspectIcon({ className }: IconProps) {
+export function RoveIcon({ className }: IconProps) {
   return (
     <svg
       className={className}

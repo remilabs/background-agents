@@ -8,13 +8,7 @@ import useSWR from "swr";
 import { formatRelativeTime, isInactiveSession } from "@/lib/time";
 import { SHORTCUT_LABELS } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@/hooks/use-media-query";
-import {
-  SidebarIcon,
-  InspectIcon,
-  PlusIcon,
-  SettingsIcon,
-  BranchIcon,
-} from "@/components/ui/icons";
+import { SidebarIcon, RoveIcon, PlusIcon, SettingsIcon, BranchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import type { Session } from "@open-inspect/shared";
 
@@ -120,8 +114,8 @@ export function SessionSidebar({ onNewSession, onToggle, onSessionSelect }: Sess
             <SidebarIcon className="w-4 h-4" />
           </Button>
           <Link href="/" className="flex items-center gap-2">
-            <InspectIcon className="w-5 h-5" />
-            <span className="font-semibold text-foreground">Inspect</span>
+            <RoveIcon className="w-5 h-5" />
+            <span className="font-semibold text-foreground">Rove</span>
           </Link>
         </div>
         <div className="flex items-center gap-2">
