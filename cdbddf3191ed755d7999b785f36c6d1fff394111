@@ -1,0 +1,36 @@
+packages/github-bot/src/handlers.ts
+  8bd450df42d8e582 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "cdbddf3191ed755d7999b785f36c6d1fff394111",
+  "prompts": {
+    "8bd450df42d8e582": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c409f00-2232-48ec-a6cf-2cc4ea09c73a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "fced2e3ad6c38b9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cab5f-c223-7251-9f20-5211c3885cb0",
+        "model": "gpt-5.3-codex-spark"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 362,
+      "overriden_lines": 0
+    }
+  }
+}
