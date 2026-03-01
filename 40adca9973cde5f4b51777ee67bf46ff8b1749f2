@@ -1,0 +1,29 @@
+packages/web/src/app/(app)/page.tsx
+  8bd450df42d8e582 369
+packages/web/src/app/layout.tsx
+  8bd450df42d8e582 17
+packages/web/src/components/ui/icons.tsx
+  8bd450df42d8e582 258
+packages/web/src/components/sidebar-layout.tsx
+  8bd450df42d8e582 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "40adca9973cde5f4b51777ee67bf46ff8b1749f2",
+  "prompts": {
+    "8bd450df42d8e582": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c409f00-2232-48ec-a6cf-2cc4ea09c73a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 7,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
