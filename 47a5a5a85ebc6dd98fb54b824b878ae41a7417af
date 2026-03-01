@@ -1,0 +1,36 @@
+terraform/environments/production/web-vercel.tf
+  8bd450df42d8e582 9,13-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "47a5a5a85ebc6dd98fb54b824b878ae41a7417af",
+  "prompts": {
+    "8bd450df42d8e582": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c409f00-2232-48ec-a6cf-2cc4ea09c73a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 21,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    },
+    "fced2e3ad6c38b9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cab5f-c223-7251-9f20-5211c3885cb0",
+        "model": "gpt-5.3-codex-spark"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 362,
+      "total_deletions": 0,
+      "accepted_lines": 362,
+      "overriden_lines": 0
+    }
+  }
+}
