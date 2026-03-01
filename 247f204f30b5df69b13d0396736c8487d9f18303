@@ -1,0 +1,35 @@
+.github/workflows/terraform.yml
+  089a35823a0bc8ec 203-204,328-329
+terraform/environments/production/workers-slack.tf
+  089a35823a0bc8ec 49
+terraform/environments/production/variables.tf
+  089a35823a0bc8ec 293-304
+terraform/environments/production/web-vercel.tf
+  089a35823a0bc8ec 73-83
+terraform/environments/production/terraform.tfvars.example
+  089a35823a0bc8ec 165-172
+terraform/environments/production/workers-github.tf
+  089a35823a0bc8ec 38
+terraform/environments/production/workers-linear.tf
+  089a35823a0bc8ec 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "247f204f30b5df69b13d0396736c8487d9f18303",
+  "prompts": {
+    "089a35823a0bc8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aed7feb5-9537-4e74-a386-b19d86f74d8e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 39,
+      "total_deletions": 3,
+      "accepted_lines": 39,
+      "overriden_lines": 0
+    }
+  }
+}
