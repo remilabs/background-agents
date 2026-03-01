@@ -1,0 +1,114 @@
+packages/slack-bot/src/index.ts
+  de8d1e776728e0e1 22,120-154,164-165,181,583-584,644-645,828-834,874-880,885,890-900,966-967,1122-1123
+todos/035-pending-p3-rename-max-attachment-size-constant.md
+  6723bdfafba4fa72 1,3-30
+  de8d1e776728e0e1 2
+packages/github-bot/src/handlers.ts
+  de8d1e776728e0e1 11,14-47,95,193,197,278,282,367,371,456,460
+todos/031-pending-p2-sendprompt-retry-no-backoff-limit.md
+  6723bdfafba4fa72 1,3-48
+  de8d1e776728e0e1 2
+todos/030-pending-p2-validate-mimetype-at-render-time.md
+  6723bdfafba4fa72 1,3-44
+  de8d1e776728e0e1 2
+todos/037-pending-p3-simplify-image-utils-validation.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-34
+todos/032-pending-p2-base64-event-replay-scalability.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-52
+packages/web/src/components/attachment-preview-strip.tsx
+  de8d1e776728e0e1 1-52
+packages/web/src/app/(app)/session/[id]/page.tsx
+  f1171c699943675f 46-47,61-64,449,453-455,458-459,467,470,584-588,632-636,676-680,1058-1084,1137,1146-1156,1234,1236,1238-1240
+  de8d1e776728e0e1 48-60,66-70,78-83,132-137,145-164,177-181,237-239,246-252,275,277,311-326,432-442,468-469,1100-1102,1104-1105,1110,1129-1135,1518,1521,1524-1526
+todos/036-pending-p3-sandbox-upload-directory-cleanup.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-37
+todos/033-pending-p3-extract-useattachments-hook.md
+  6723bdfafba4fa72 1,3-35
+  de8d1e776728e0e1 2
+packages/control-plane/src/session/message-queue.ts
+  de8d1e776728e0e1 273-300,320-326,330,334
+  f1171c699943675f 18,32,306,343
+todos/029-pending-p2-consolidate-attachment-zod-schemas.md
+  6723bdfafba4fa72 1,3-60
+  de8d1e776728e0e1 2
+packages/web/src/lib/image-utils.ts
+  de8d1e776728e0e1 15-16,41,89,97,107,141,148,152,156,183
+  f1171c699943675f 1-14,17,20-40,42-88,90-96,98-106,108-140,142-147,149-151,153-155,157-182,184-203
+  1a45efb12d54f5f7 18-19
+packages/web/src/hooks/use-attachments.ts
+  de8d1e776728e0e1 1-62
+packages/linear-bot/src/index.ts
+  de8d1e776728e0e1 33,40-73,821-825,836
+packages/modal-infra/src/sandbox/bridge.py
+  f1171c699943675f 445-450,453-456,458-462,464-467,482,484,509-513,515-530,532-536,544,553,566-570,745,747-748
+  1a45efb12d54f5f7 440-444,451-452,457,463,468-476,478-481,483,485-508,514,531
+  de8d1e776728e0e1 609-615
+todos/034-pending-p3-bot-integrations-drop-images.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-36
+packages/web/src/hooks/use-session-socket.ts
+  de8d1e776728e0e1 521-522
+  f1171c699943675f 6,9,12,56-57,106-133,180-188,512-513,539,545-547,549-550
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "0008cdf5f52927d683fb219ba8681ab20ba26931",
+  "prompts": {
+    "1a45efb12d54f5f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f293fe0a-c9b8-4a1b-a604-ee24fac7f44e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 102,
+      "total_deletions": 60,
+      "accepted_lines": 51,
+      "overriden_lines": 0
+    },
+    "6723bdfafba4fa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0790c9-80e7-4ef0-8528-d0364d1fb0ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 367,
+      "overriden_lines": 0
+    },
+    "de8d1e776728e0e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096b7b7c-6ffc-4436-8cf0-bb3022e17495",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 1,
+      "accepted_lines": 452,
+      "overriden_lines": 0
+    },
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 374,
+      "overriden_lines": 0
+    }
+  }
+}
