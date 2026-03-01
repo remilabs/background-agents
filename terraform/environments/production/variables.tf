@@ -256,6 +256,12 @@ variable "deployment_name" {
   type        = string
 }
 
+variable "web_app_custom_domain" {
+  description = "Custom domain for the web app (e.g., 'rove.remi.ai'). When set, overrides the auto-generated Vercel/Cloudflare URL for NEXTAUTH_URL, CORS, and cross-service references. You must also configure this domain in your hosting provider (Vercel custom domain or Cloudflare DNS)."
+  type        = string
+  default     = null
+}
+
 variable "enable_durable_object_bindings" {
   description = "Enable DO bindings. For initial deployment: set to false (applies migrations), then set to true (adds bindings)."
   type        = bool

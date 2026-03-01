@@ -6,11 +6,13 @@ locals {
   control_plane_url  = "https://${local.control_plane_host}"
   ws_url             = "wss://${local.control_plane_host}"
 
-  # Web app URL depends on deployment platform
-  web_app_url = var.web_platform == "cloudflare" ? (
-    "https://open-inspect-web-${local.name_suffix}.${var.cloudflare_worker_subdomain}.workers.dev"
-    ) : (
-    "https://open-inspect-${local.name_suffix}.vercel.app"
+  # Web app URL: custom domain takes precedence, otherwise auto-generated from platform
+  web_app_url = var.web_app_custom_domain != null ? "https://${var.web_app_custom_domain}" : (
+    var.web_platform == "cloudflare" ? (
+      "https://open-inspect-web-${local.name_suffix}.${var.cloudflare_worker_subdomain}.workers.dev"
+      ) : (
+      "https://open-inspect-${local.name_suffix}.vercel.app"
+    )
   )
 
   # Worker script paths (deterministic output locations)

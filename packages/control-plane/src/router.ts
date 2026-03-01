@@ -2,9 +2,9 @@
  * API router for Open-Inspect Control Plane.
  */
 
-import type { Env, CreateSessionRequest, CreateSessionResponse } from "./types";
+import type { Env, CreateSessionResponse } from "./types";
 import { generateId, encryptToken } from "./auth/crypto";
-import { verifyInternalToken } from "./auth/internal";
+import { verifyInternalToken } from "@open-inspect/shared";
 import {
   resolveScmProviderFromEnv,
   SourceControlProviderError,
@@ -17,7 +17,6 @@ import {
   getValidModelOrDefault,
   isValidReasoningEffort,
   type SessionStatus,
-  type CallbackContext,
   type SpawnChildSessionRequest,
   type SpawnContext,
 } from "@open-inspect/shared";
@@ -37,6 +36,7 @@ import { modelPreferencesRoutes } from "./routes/model-preferences";
 import { reposRoutes } from "./routes/repos";
 import { repoImageRoutes } from "./routes/repo-images";
 import { secretsRoutes } from "./routes/secrets";
+import { z, ZodError } from "zod";
 
 const logger = createLogger("router");
 
@@ -59,6 +59,100 @@ function parseSessionStatus(value: string | null): SessionStatus | undefined {
   return SESSION_STATUSES.includes(value as SessionStatus) ? (value as SessionStatus) : undefined;
 }
 
+// ── Zod schemas for request body validation ──
+
+const CreateSessionSchema = z.object({
+  repoOwner: z.string().min(1, "repoOwner is required"),
+  repoName: z.string().min(1, "repoName is required"),
+  title: z.string().optional(),
+  model: z.string().optional(),
+  reasoningEffort: z.string().optional(),
+  branch: z.string().optional(),
+  scmToken: z.string().optional(),
+  userId: z.string().optional(),
+  scmLogin: z.string().optional(),
+  scmName: z.string().optional(),
+  scmEmail: z.string().optional(),
+});
+
+const PromptSchema = z.object({
+  content: z.string().min(1, "content is required"),
+  authorId: z.string().optional(),
+  source: z.string().optional(),
+  model: z.string().optional(),
+  reasoningEffort: z.string().optional(),
+  attachments: z
+    .array(
+      z.object({
+        type: z.string(),
+        name: z.string(),
+        url: z.string().optional(),
+      })
+    )
+    .optional(),
+  // Validates against SlackCallbackContext | LinearCallbackContext from @open-inspect/shared
+  callbackContext: z
+    .union([
+      z.object({
+        source: z.literal("slack"),
+        channel: z.string(),
+        threadTs: z.string(),
+        repoFullName: z.string(),
+        model: z.string(),
+        reasoningEffort: z.string().optional(),
+        reactionMessageTs: z.string().optional(),
+      }),
+      z.object({
+        source: z.literal("linear"),
+        issueId: z.string(),
+        issueIdentifier: z.string(),
+        issueUrl: z.string(),
+        repoFullName: z.string(),
+        model: z.string(),
+        agentSessionId: z.string().optional(),
+        organizationId: z.string().optional(),
+      }),
+    ])
+    .optional(),
+});
+
+const WsTokenSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  scmUserId: z.string().optional(),
+  scmLogin: z.string().optional(),
+  scmName: z.string().optional(),
+  scmEmail: z.string().optional(),
+  scmToken: z.string().optional(),
+  scmTokenExpiresAt: z.number().optional(),
+  scmRefreshToken: z.string().optional(),
+});
+
+const AddParticipantSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  scmLogin: z.string().optional(),
+  scmName: z.string().optional(),
+  scmEmail: z.string().optional(),
+  role: z.string().optional(),
+});
+
+const ArchiveSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+});
+
+const CreatePRSchema = z.object({
+  title: z.string().min(1, "title is required"),
+  body: z.string().min(1, "body is required"),
+  baseBranch: z.string().optional(),
+  headBranch: z.string().optional(),
+});
+
+/**
+ * Format a ZodError into a human-readable string for 400 responses.
+ */
+function formatZodError(err: ZodError): string {
+  return err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+}
+
 /**
  * Create a Request to a Durable Object stub with correlation headers.
  * Ensures trace_id and request_id propagate into the DO.
@@ -70,9 +164,28 @@ function internalRequest(url: string, init: RequestInit | undefined, ctx: Reques
   return new Request(url, { ...init, headers });
 }
 
-function withCorsAndTraceHeaders(response: Response, ctx: RequestContext): Response {
+/**
+ * Return the request origin if it matches the configured WEB_APP_URL, or null otherwise.
+ * When the Origin header is absent (e.g. same-origin or non-browser requests), no
+ * Access-Control-Allow-Origin header will be set, which is the correct behaviour.
+ */
+export function getAllowedOrigin(requestOrigin: string | null, env: Env): string | null {
+  if (!requestOrigin || !env.WEB_APP_URL) return null;
+  // Compare origin against the configured web app URL (strip trailing slash for safety)
+  const allowed = env.WEB_APP_URL.replace(/\/+$/, "");
+  return requestOrigin === allowed ? requestOrigin : null;
+}
+
+function withCorsAndTraceHeaders(
+  response: Response,
+  ctx: RequestContext,
+  allowedOrigin: string | null
+): Response {
   const headers = new Headers(response.headers);
-  headers.set("Access-Control-Allow-Origin", "*");
+  if (allowedOrigin) {
+    headers.set("Access-Control-Allow-Origin", allowedOrigin);
+    headers.set("Vary", "Origin");
+  }
   headers.set("x-request-id", ctx.request_id);
   headers.set("x-trace-id", ctx.trace_id);
   return new Response(response.body, {
@@ -169,7 +282,8 @@ function isSandboxAuthRoute(path: string): boolean {
 function enforceImplementedScmProvider(
   path: string,
   env: Env,
-  ctx: RequestContext
+  ctx: RequestContext,
+  allowedOrigin: string | null
 ): Response | null {
   try {
     const provider = resolveDeploymentScmProvider(env);
@@ -185,7 +299,7 @@ function enforceImplementedScmProvider(
         `SCM provider '${provider}' is not implemented in this deployment.`,
         501
       );
-      return withCorsAndTraceHeaders(response, ctx);
+      return withCorsAndTraceHeaders(response, ctx, allowedOrigin);
     }
 
     return null;
@@ -203,7 +317,7 @@ function enforceImplementedScmProvider(
     });
 
     const response = error(errorMessage, 500);
-    return withCorsAndTraceHeaders(response, ctx);
+    return withCorsAndTraceHeaders(response, ctx, allowedOrigin);
   }
 }
 
@@ -463,18 +577,24 @@ export async function handleRequest(
   // Instrument D1 so all queries are automatically timed
   const instrumentedEnv: Env = { ...env, DB: instrumentD1(env.DB, metrics) };
 
+  // Resolve allowed CORS origin once for the entire request
+  const requestOrigin = request.headers.get("Origin");
+  const allowedOrigin = getAllowedOrigin(requestOrigin, env);
+
   // CORS preflight
   if (method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        "Access-Control-Max-Age": "86400",
-        "x-request-id": ctx.request_id,
-        "x-trace-id": ctx.trace_id,
-      },
-    });
+    const preflightHeaders: Record<string, string> = {
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Max-Age": "86400",
+      "x-request-id": ctx.request_id,
+      "x-trace-id": ctx.trace_id,
+    };
+    if (allowedOrigin) {
+      preflightHeaders["Access-Control-Allow-Origin"] = allowedOrigin;
+      preflightHeaders["Vary"] = "Origin";
+    }
+    return new Response(null, { headers: preflightHeaders });
   }
 
   // Require authentication for non-public routes
@@ -494,17 +614,17 @@ export async function handleRequest(
             // Sandbox auth passed, continue to route handler
           } else {
             // Both HMAC and sandbox auth failed
-            return withCorsAndTraceHeaders(sandboxAuthError, ctx);
+            return withCorsAndTraceHeaders(sandboxAuthError, ctx, allowedOrigin);
           }
         }
       } else {
         // Not a sandbox auth route, return HMAC auth error
-        return withCorsAndTraceHeaders(hmacAuthError, ctx);
+        return withCorsAndTraceHeaders(hmacAuthError, ctx, allowedOrigin);
       }
     }
   }
 
-  const providerCheck = enforceImplementedScmProvider(path, env, ctx);
+  const providerCheck = enforceImplementedScmProvider(path, env, ctx, allowedOrigin);
   if (providerCheck) {
     return providerCheck;
   }
@@ -550,7 +670,7 @@ export async function handleRequest(
         ...ctx.metrics.summarize(),
       });
 
-      return withCorsAndTraceHeaders(response, ctx);
+      return withCorsAndTraceHeaders(response, ctx, allowedOrigin);
     }
   }
 
@@ -597,16 +717,14 @@ async function handleCreateSession(
   _match: RegExpMatchArray,
   ctx: RequestContext
 ): Promise<Response> {
-  const body = (await request.json()) as CreateSessionRequest & {
-    scmToken?: string;
-    userId?: string;
-    scmLogin?: string;
-    scmName?: string;
-    scmEmail?: string;
-  };
-
-  if (!body.repoOwner || !body.repoName) {
-    return error("repoOwner and repoName are required");
+  let body: z.infer<typeof CreateSessionSchema>;
+  try {
+    body = CreateSessionSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
   }
 
   // Validate branch name if provided (defense in depth)
@@ -780,18 +898,14 @@ async function handleSessionPrompt(
   const sessionId = match.groups?.id;
   if (!sessionId) return error("Session ID required");
 
-  const body = (await request.json()) as {
-    content: string;
-    authorId?: string;
-    source?: string;
-    model?: string;
-    reasoningEffort?: string;
-    attachments?: Array<{ type: string; name: string; url?: string }>;
-    callbackContext?: CallbackContext;
-  };
-
-  if (!body.content) {
-    return error("content is required");
+  let body: z.infer<typeof PromptSchema>;
+  try {
+    body = PromptSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
   }
 
   const doId = env.SESSION.idFromName(sessionId);
@@ -893,7 +1007,15 @@ async function handleAddParticipant(
   const sessionId = match.groups?.id;
   if (!sessionId) return error("Session ID required");
 
-  const body = await request.json();
+  let body: z.infer<typeof AddParticipantSchema>;
+  try {
+    body = AddParticipantSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
+  }
 
   const doId = env.SESSION.idFromName(sessionId);
   const stub = env.SESSION.get(doId);
@@ -937,28 +1059,14 @@ async function handleCreatePR(
   const sessionId = match.groups?.id;
   if (!sessionId) return error("Session ID required");
 
-  const body = (await request.json()) as {
-    title: string;
-    body: string;
-    baseBranch?: string;
-    headBranch?: string;
-  };
-
-  if (
-    typeof body.title !== "string" ||
-    typeof body.body !== "string" ||
-    body.title.trim().length === 0 ||
-    body.body.trim().length === 0
-  ) {
-    return error("title and body are required");
-  }
-
-  if (body.baseBranch != null && typeof body.baseBranch !== "string") {
-    return error("baseBranch must be a string");
-  }
-
-  if (body.headBranch != null && typeof body.headBranch !== "string") {
-    return error("headBranch must be a string");
+  let body: z.infer<typeof CreatePRSchema>;
+  try {
+    body = CreatePRSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
   }
 
   const doId = env.SESSION.idFromName(sessionId);
@@ -970,12 +1078,7 @@ async function handleCreatePR(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: body.title,
-          body: body.body,
-          baseBranch: body.baseBranch,
-          headBranch: body.headBranch,
-        }),
+        body: JSON.stringify(body),
       },
       ctx
     )
@@ -1007,19 +1110,14 @@ async function handleSessionWsToken(
   const sessionId = match.groups?.id;
   if (!sessionId) return error("Session ID required");
 
-  const body = (await request.json()) as {
-    userId: string;
-    scmUserId?: string;
-    scmLogin?: string;
-    scmName?: string;
-    scmEmail?: string;
-    scmToken?: string;
-    scmTokenExpiresAt?: number;
-    scmRefreshToken?: string;
-  };
-
-  if (!body.userId) {
-    return error("userId is required");
+  let body: z.infer<typeof WsTokenSchema>;
+  try {
+    body = WsTokenSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
   }
 
   const scmUserId = body.scmUserId;
@@ -1117,13 +1215,14 @@ async function handleArchiveSession(
   const sessionId = match.groups?.id;
   if (!sessionId) return error("Session ID required");
 
-  // Parse userId from request body for authorization
-  let userId: string | undefined;
+  let body: z.infer<typeof ArchiveSchema>;
   try {
-    const body = (await request.json()) as { userId?: string };
-    userId = body.userId;
-  } catch {
-    // Body parsing failed, continue without userId
+    body = ArchiveSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
   }
 
   const doId = env.SESSION.idFromName(sessionId);
@@ -1135,7 +1234,7 @@ async function handleArchiveSession(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId: body.userId }),
       },
       ctx
     )
@@ -1162,13 +1261,14 @@ async function handleUnarchiveSession(
   const sessionId = match.groups?.id;
   if (!sessionId) return error("Session ID required");
 
-  // Parse userId from request body for authorization
-  let userId: string | undefined;
+  let body: z.infer<typeof ArchiveSchema>;
   try {
-    const body = (await request.json()) as { userId?: string };
-    userId = body.userId;
-  } catch {
-    // Body parsing failed, continue without userId
+    body = ArchiveSchema.parse(await request.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return error(`Invalid request body: ${formatZodError(e)}`);
+    }
+    return error("Invalid JSON body");
   }
 
   const doId = env.SESSION.idFromName(sessionId);
@@ -1180,7 +1280,7 @@ async function handleUnarchiveSession(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId: body.userId }),
       },
       ctx
     )
