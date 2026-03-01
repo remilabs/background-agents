@@ -1,7 +1,121 @@
+packages/web/src/lib/image-utils.ts
+  f1171c699943675f 1-14,17,20-51,53-106,108-116,118-150,152-157,159-161,163-165,167-192,194-220
+  de8d1e776728e0e1 15-16,52,107,117,151,158,162,166,193
+  1a45efb12d54f5f7 18-19
+packages/github-bot/src/handlers.ts
+  de8d1e776728e0e1 11,14-47,95,193,197,278,282,367,371,456,460
+packages/control-plane/src/session/message-queue.ts
+  f1171c699943675f 18,32,306,336
+  de8d1e776728e0e1 271-298,323,327
+packages/slack-bot/src/index.ts
+  de8d1e776728e0e1 22,120-154,164-165,181,583-584,644-645,828-834,874-880,885,890-900,966-967,1122-1123
+packages/control-plane/src/session/types.ts
+  1a45efb12d54f5f7 15,115
+packages/web/src/hooks/use-attachments.ts
+  de8d1e776728e0e1 1-62
+todos/031-pending-p2-sendprompt-retry-no-backoff-limit.md
+  6723bdfafba4fa72 1,3-48
+  de8d1e776728e0e1 2
+packages/modal-infra/src/sandbox/bridge.py
+  1a45efb12d54f5f7 583-587,594-595,600,606,611-619,621-624,626,628-651,657,674,1588-1617,1682-1706
+  f1171c699943675f 195-204,342-344,398-405,412-468,471-516,588-593,596-599,601-605,607-610,625,627,652-656,658-673,675-679,688,697,709-713,881,883-884,1012-1015,1441-1450,1619-1628
+packages/control-plane/src/router.ts
+  1a45efb12d54f5f7 40,85
+packages/web/src/components/attachment-preview-strip.tsx
+  de8d1e776728e0e1 1-52
+todos/035-pending-p3-rename-max-attachment-size-constant.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-30
+todos/033-pending-p3-extract-useattachments-hook.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-35
+todos/037-pending-p3-simplify-image-utils-validation.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-34
+todos/030-pending-p2-validate-mimetype-at-render-time.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-44
+packages/web/src/hooks/use-session-socket.ts
+  f1171c699943675f 5,69-70,563-564,586,592-594,596-597
+  de8d1e776728e0e1 572-573
+todos/032-pending-p2-base64-event-replay-scalability.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-52
+todos/029-pending-p2-consolidate-attachment-zod-schemas.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-60
+todos/034-pending-p3-bot-integrations-drop-images.md
+  6723bdfafba4fa72 1,3-36
+  de8d1e776728e0e1 2
+todos/036-pending-p3-sandbox-upload-directory-cleanup.md
+  de8d1e776728e0e1 2
+  6723bdfafba4fa72 1,3-37
+packages/linear-bot/src/index.ts
+  de8d1e776728e0e1 33,40-73,821-825,836
+packages/control-plane/src/session/durable-object.ts
+  1a45efb12d54f5f7 11,14,122,169,1305
+packages/web/src/app/(app)/session/[id]/page.tsx
+  de8d1e776728e0e1 50-51,58-62,225,228-232,403,1136-1139,1552,1555,1558-1560
+  f1171c699943675f 48,52-56,384,388-390,393-394,402,404,531-535,582-586,629-633,1096-1122,1141,1150-1160,1247,1249,1251-1253
+packages/control-plane/src/session/schemas.ts
+  1a45efb12d54f5f7 1-38
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.1.7",
   "base_commit_sha": "642b6103d50c53c41825abe6773606e59663b22a",
-  "prompts": {}
+  "prompts": {
+    "1a45efb12d54f5f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f293fe0a-c9b8-4a1b-a604-ee24fac7f44e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 102,
+      "total_deletions": 60,
+      "accepted_lines": 153,
+      "overriden_lines": 0
+    },
+    "6723bdfafba4fa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0790c9-80e7-4ef0-8528-d0364d1fb0ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 367,
+      "overriden_lines": 0
+    },
+    "de8d1e776728e0e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096b7b7c-6ffc-4436-8cf0-bb3022e17495",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 1,
+      "accepted_lines": 346,
+      "overriden_lines": 0
+    },
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 501,
+      "overriden_lines": 0
+    }
+  }
 }
