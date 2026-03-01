@@ -23,7 +23,7 @@ export async function GET() {
     const statusData = await statusResponse.json();
 
     const enabledRepos = (enabledData.repos ?? []).map(
-      (r: { repoOwner: string; repoName: string }) => `${r.repoOwner}/${r.repoName}`
+      (r: { repoOwner: string; repoName: string }) => `${r.repoOwner}/${r.repoName}`.toLowerCase()
     );
 
     return NextResponse.json({
