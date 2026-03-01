@@ -16,7 +16,10 @@ export async function GET() {
     ]);
 
     if (!enabledResponse.ok || !statusResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch repo images" }, { status: 502 });
+      console.error(
+        `[repo-images] Control plane error: enabled=${enabledResponse.status}, status=${statusResponse.status}`
+      );
+      return NextResponse.json({ enabledRepos: [], images: [] });
     }
 
     const enabledData = await enabledResponse.json();
@@ -30,8 +33,8 @@ export async function GET() {
       enabledRepos,
       images: statusData.images ?? [],
     });
-  } catch (error) {
-    console.error("Failed to fetch repo images:", error);
-    return NextResponse.json({ error: "Failed to fetch repo images" }, { status: 500 });
+  } catch (err) {
+    console.error("Failed to fetch repo images:", err);
+    return NextResponse.json({ enabledRepos: [], images: [] });
   }
 }
