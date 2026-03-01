@@ -6,11 +6,16 @@ module "web_app" {
   count  = var.web_platform == "vercel" ? 1 : 0
   source = "../../modules/vercel-project"
 
-  project_name = "open-inspect-${local.name_suffix}"
+  project_name = "rove"
   team_id      = var.vercel_team_id
   framework    = "nextjs"
 
-  # No git_repository - deploy via CLI/CI instead of auto-deploy on push
+  git_repository = {
+    type              = "github"
+    repo              = "remilabs/rove"
+    production_branch = "main"
+  }
+
   root_directory  = "packages/web"
   install_command = "cd ../.. && npm install && npm run build -w @open-inspect/shared"
   build_command   = "next build"

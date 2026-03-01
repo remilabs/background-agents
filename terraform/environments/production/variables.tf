@@ -97,11 +97,6 @@ variable "enable_github_bot" {
   description = "Enable the GitHub bot worker. Requires github_webhook_secret and github_bot_username."
   type        = bool
   default     = false
-
-  validation {
-    condition     = var.enable_github_bot == false || (length(var.github_webhook_secret) > 0 && length(var.github_bot_username) > 0)
-    error_message = "When enable_github_bot is true, github_webhook_secret and github_bot_username must be non-empty."
-  }
 }
 
 variable "github_webhook_secret" {
@@ -125,11 +120,6 @@ variable "enable_slack_bot" {
   description = "Enable the Slack bot worker. Set to false to skip deployment."
   type        = bool
   default     = true
-
-  validation {
-    condition     = var.enable_slack_bot == false || (length(var.slack_bot_token) > 0 && length(var.slack_signing_secret) > 0)
-    error_message = "When enable_slack_bot is true, slack_bot_token and slack_signing_secret must be non-empty."
-  }
 }
 
 variable "slack_bot_token" {
@@ -154,15 +144,6 @@ variable "enable_linear_bot" {
   description = "Enable the Linear bot worker. Requires linear_client_id, linear_client_secret, and linear_webhook_secret."
   type        = bool
   default     = false
-
-  validation {
-    condition = var.enable_linear_bot == false || (
-      length(var.linear_client_id) > 0 &&
-      length(var.linear_client_secret) > 0 &&
-      length(var.linear_webhook_secret) > 0
-    )
-    error_message = "When enable_linear_bot is true, linear_client_id, linear_client_secret, and linear_webhook_secret must be non-empty."
-  }
 }
 
 variable "linear_client_id" {
