@@ -27,6 +27,7 @@ async function extractMarkdownImageAttachment(markdown: string): Promise<Attachm
   if (!match) return null;
 
   const url = match[1];
+  if (!url.startsWith("https://")) return null;
   try {
     const resp = await fetch(url);
     if (!resp.ok) return null;
