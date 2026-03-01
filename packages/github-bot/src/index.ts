@@ -1,5 +1,5 @@
 /**
- * Open-Inspect GitHub Bot Worker
+ * Rove GitHub Bot Worker
  *
  * Cloudflare Worker that handles GitHub webhook events and provides
  * automated code review and comment-triggered actions via the coding agent.
@@ -26,7 +26,7 @@ import {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/health", (c) => c.json({ status: "healthy", service: "open-inspect-github-bot" }));
+app.get("/health", (c) => c.json({ status: "healthy", service: "rove-github-bot" }));
 
 app.post("/webhooks/github", async (c) => {
   const log = createLogger("webhook", {}, parseLogLevel(c.env.LOG_LEVEL));

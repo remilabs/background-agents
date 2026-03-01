@@ -1,5 +1,5 @@
 /**
- * Open-Inspect Linear Agent Worker
+ * Rove Linear Agent Worker
  *
  * Cloudflare Worker handling Linear AgentSessionEvent webhooks.
  * Routes-only entry point — orchestration lives in webhook-handler.ts.
@@ -62,7 +62,7 @@ function isAgentSessionWebhookPayload(payload: unknown): payload is AgentSession
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/health", (c) => {
-  return c.json({ status: "healthy", service: "open-inspect-linear-bot" });
+  return c.json({ status: "healthy", service: "rove-linear-bot" });
 });
 
 // ─── OAuth Routes ────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ app.get("/oauth/callback", async (c) => {
       <html>
         <head><title>OAuth Success</title></head>
         <body>
-          <h1>Open-Inspect Agent Installed!</h1>
+          <h1>Rove Agent Installed!</h1>
           <p>Successfully connected to workspace: <strong>${escapeHtml(orgName)}</strong></p>
           <p>You can now @mention or assign the agent on Linear issues.</p>
         </body>
