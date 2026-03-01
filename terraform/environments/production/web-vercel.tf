@@ -70,6 +70,18 @@ module "web_app" {
       sensitive = false
     },
     {
+      key       = "ALLOWED_GITHUB_TEAMS"
+      value     = var.allowed_github_teams
+      targets   = ["production", "preview"]
+      sensitive = false
+    },
+    {
+      key       = "ALLOWED_GITHUB_ORGS"
+      value     = var.allowed_github_orgs
+      targets   = ["production", "preview"]
+      sensitive = false
+    },
+    {
       key       = "ALLOWED_EMAIL_DOMAINS"
       value     = var.allowed_email_domains
       targets   = ["production", "preview"]

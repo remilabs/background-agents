@@ -290,6 +290,18 @@ variable "allowed_users" {
   default     = ""
 }
 
+variable "allowed_github_teams" {
+  description = "Comma-separated list of allowed GitHub teams in org/team-slug format (empty = no team-based restrictions)"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_github_orgs" {
+  description = "Comma-separated list of allowed GitHub org names (empty = no org-based restrictions)"
+  type        = string
+  default     = ""
+}
+
 variable "allowed_email_domains" {
   description = "Comma-separated list of email domains allowed to sign in (e.g., 'example.com,corp.io'). Empty = allow all domains."
   type        = string
