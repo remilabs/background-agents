@@ -1,5 +1,6 @@
 locals {
   name_suffix = var.deployment_name
+  vercel_project_name = "rove"
 
   # URLs for cross-service configuration
   control_plane_host = "open-inspect-control-plane-${local.name_suffix}.${var.cloudflare_worker_subdomain}.workers.dev"
@@ -11,7 +12,7 @@ locals {
     var.web_platform == "cloudflare" ? (
       "https://open-inspect-web-${local.name_suffix}.${var.cloudflare_worker_subdomain}.workers.dev"
       ) : (
-      "https://open-inspect-${local.name_suffix}.vercel.app"
+      "https://${local.vercel_project_name}.vercel.app"
     )
   )
 
