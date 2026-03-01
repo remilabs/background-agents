@@ -61,6 +61,8 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   ALLOWED_MIME_TYPES,
 } from "@/lib/image-utils";
+import { useAttachments } from "@/hooks/use-attachments";
+import { AttachmentPreviewStrip } from "@/components/attachment-preview-strip";
 
 /** Return the MIME type only if it's in the allowlist; default to image/png. */
 function safeMimeType(mime: string | undefined): string {
@@ -416,36 +418,6 @@ function SessionPageContent() {
         clearTimeout(pendingAckTimeoutRef.current);
       }
     };
-  }, []);
-
-  const addAttachments = useCallback(
-    async (files: File[]) => {
-      setAttachmentError(null);
-      const remaining = MAX_ATTACHMENTS_PER_MESSAGE - pendingAttachments.length;
-      if (remaining <= 0) {
-        setAttachmentError(`Maximum ${MAX_ATTACHMENTS_PER_MESSAGE} images per message.`);
-        return;
-      }
-
-      const filesToProcess = files.slice(0, remaining);
-      for (const file of filesToProcess) {
-        try {
-          const attachment = await processImageFile(file);
-          setPendingAttachments((prev) => {
-            if (prev.length >= MAX_ATTACHMENTS_PER_MESSAGE) return prev;
-            return [...prev, attachment];
-          });
-        } catch (err) {
-          setAttachmentError(err instanceof Error ? err.message : "Failed to process image.");
-        }
-      }
-    },
-    [pendingAttachments.length]
-  );
-
-  const removeAttachment = useCallback((index: number) => {
-    setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
-    setAttachmentError(null);
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
