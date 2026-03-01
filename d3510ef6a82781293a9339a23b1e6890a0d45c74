@@ -1,0 +1,90 @@
+docs/plans/2026-02-24-feat-smart-session-titles-plan.md
+  04eff4675b8e0f8a 1-62,64-73,75-116,118-155,157-162,164-185,187-191,193-246,248-426,428-519,521-690,692-703,705-711,713-715,719-728,730-759
+todos/028-pending-p1-websocket-message-size-limit.md
+  6723bdfafba4fa72 1-32,34-38,40,42-92,94-99
+docs/plans/2026-02-24-feat-session-list-filtering-plan.md
+  46b3d3b7fc350c0a 1-29,31-115,117-195,197-207,209-218,220-223,225-266,268-278,280-291,293-319,321-368,370-411,413-475,481-493,495-499,501-506,508-518,520-566
+docs/plans/2026-02-22-feat-chat-image-upload-plan.md
+  40d368f3444bfa7e 1-3,5-33,35-60,64-91,97-101,106-110,116,128-130,134-143,149-154,156-158,160-162,164-166,168-170,172-175,177-182,184-189,191-220
+  f1171c699943675f 4,111-115,117-127,131-133
+todos/026-pending-p1-path-traversal-sandbox-file-write.md
+  6723bdfafba4fa72 1-22,25-36,38-52,54-59,61-64,66-90,92-97
+todos/027-pending-p1-server-side-attachment-validation.md
+  6723bdfafba4fa72 1-34,36-51,53-89,91-95
+docs/brainstorms/2026-02-24-session-list-filtering-brainstorm.md
+  46b3d3b7fc350c0a 1-82,84-92
+docs/brainstorms/2026-02-24-smart-session-titles-brainstorm.md
+  04eff4675b8e0f8a 1-13,17-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.6",
+  "base_commit_sha": "d3510ef6a82781293a9339a23b1e6890a0d45c74",
+  "prompts": {
+    "04eff4675b8e0f8a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8dbcb61-f9ba-4e4c-b59e-910103009d98",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 843,
+      "overriden_lines": 5
+    },
+    "40d368f3444bfa7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ca50e-b1b4-7581-8d38-6a507156cc27",
+        "model": "gpt-5.3-codex-spark"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 174,
+      "overriden_lines": 7
+    },
+    "46b3d3b7fc350c0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc16832f-a5db-468c-830e-d90f0b2b804b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 636,
+      "overriden_lines": 6
+    },
+    "6723bdfafba4fa72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b0790c9-80e7-4ef0-8528-d0364d1fb0ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 277,
+      "overriden_lines": 4
+    },
+    "f1171c699943675f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c30806a9-085b-49af-bf94-3e55f595ead8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Brant Choate <brantchoate@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    }
+  }
+}
