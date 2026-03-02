@@ -41,10 +41,9 @@ check "linear_bot_credentials_required" {
       (
         trimspace(var.linear_client_id) != "" &&
         trimspace(var.linear_client_secret) != "" &&
-        trimspace(var.linear_webhook_secret) != "" &&
-        trimspace(var.linear_api_key) != ""
+        trimspace(var.linear_webhook_secret) != ""
       )
     )
-    error_message = "enable_linear_bot is true, but linear_client_id, linear_client_secret, linear_webhook_secret, and linear_api_key must be set."
+    error_message = "enable_linear_bot is true, but linear_client_id, linear_client_secret, and linear_webhook_secret must be set."
   }
 }
