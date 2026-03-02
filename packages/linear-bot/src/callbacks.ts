@@ -324,8 +324,8 @@ async function handleCompletionCallback(
     }
 
     const commentBody = payload.success
-      ? `## 🤖 Open-Inspect completed\n\n${message}`
-      : `## ⚠️ Open-Inspect encountered an issue\n\n${message}`;
+      ? `## 🤖 Rove completed\n\n${message}`
+      : `## ⚠️ Rove encountered an issue\n\n${message}`;
 
     const result = await postIssueComment(env.LINEAR_API_KEY, context.issueId, commentBody);
 

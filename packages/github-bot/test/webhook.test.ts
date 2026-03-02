@@ -152,7 +152,7 @@ describe("GET /health", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       status: "healthy",
-      service: "open-inspect-github-bot",
+      service: "rove-github-bot",
     });
   });
 });
