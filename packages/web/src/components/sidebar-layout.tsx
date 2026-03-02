@@ -7,7 +7,7 @@ import { SessionSidebar } from "./session-sidebar";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
-import { GitHubIcon } from "@/components/ui/icons";
+import { GitHubIcon, RoveIcon } from "@/components/ui/icons";
 
 interface SidebarContextValue {
   isOpen: boolean;
@@ -61,7 +61,7 @@ export function SidebarLayout({ children }: SidebarLayoutProps) {
   if (!session) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-8">
-        <h1 className="text-4xl font-bold text-foreground">Rove</h1>
+        <RoveIcon className="h-8 w-auto text-foreground" />
         <p className="text-muted-foreground max-w-md text-center">
           Background coding agent for your team. Ship faster with AI-powered code changes.
         </p>

@@ -113,9 +113,8 @@ export function SessionSidebar({ onNewSession, onToggle, onSessionSelect }: Sess
           >
             <SidebarIcon className="w-4 h-4" />
           </Button>
-          <Link href="/" className="flex items-center gap-2">
-            <RoveIcon className="w-5 h-5" />
-            <span className="font-semibold text-foreground">Rove</span>
+          <Link href="/" className="flex items-center">
+            <RoveIcon className="h-3.5 w-auto text-foreground" />
           </Link>
         </div>
         <div className="flex items-center gap-2">

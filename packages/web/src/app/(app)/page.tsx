@@ -25,6 +25,7 @@ import {
   BranchIcon,
   ChevronDownIcon,
   SendIcon,
+  RoveIcon,
 } from "@/components/ui/icons";
 import { Combobox, type ComboboxGroup } from "@/components/ui/combobox";
 
@@ -366,7 +367,7 @@ function HomeContent({
         <div className="w-full max-w-2xl">
           {/* Welcome text */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-semibold text-foreground mb-2">Welcome to Rove</h1>
+            <RoveIcon className="h-7 w-auto text-foreground mx-auto mb-2" />
             {isAuthenticated ? (
               <p className="text-muted-foreground">
                 Ask a question or describe what you want to build
